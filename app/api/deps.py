@@ -32,6 +32,14 @@ def get_session_store(request: Request) -> SessionStore:
     return request.app.state.session_store
 
 
+def get_backend_client(request: Request):
+    return request.app.state.backend
+
+
+def get_chat_model(request: Request):
+    return request.app.state.chat_model
+
+
 async def get_request_context(
     request: Request,
     authenticator: Authenticator = Depends(get_authenticator),
