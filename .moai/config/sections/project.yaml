@@ -1,0 +1,27 @@
+# Project Metadata Configuration
+# Project-specific information and settings
+
+project:
+  # Project name (derived from directory name or user input)
+  name: "flori-ai"
+
+  # Project description (optional, user-provided)
+  description: "Flori 꽃집 SaaS 프리미엄 AI 서비스 — FastAPI + LangGraph (데이터 분석/OCR 예약/음성/에이전트)"
+
+  # Project mode: personal, team, or enterprise
+  # - personal: Single developer, lightweight workflows
+  # - team: Collaborative development with PR workflows
+  # - enterprise: Full governance and compliance features
+  mode: personal
+
+  # Project creation timestamp (ISO 8601 format)
+  created_at: "2026-05-25"
+
+  # Project initialization status
+  initialized: true
+
+  # Optimization status (true if project structure has been optimized)
+  optimized: false
+
+  # Template version used to create/update this project
+  template_version: "2.14.0"
