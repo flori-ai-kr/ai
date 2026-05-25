@@ -6,9 +6,9 @@ from typing import Any
 
 _logger = logging.getLogger("flori.audit")
 
-# 마스킹 대상 키 → 마스킹 함수
-_PHONE_KEYS = {"customer_phone", "phone"}
-_NAME_KEYS = {"customer_name", "name"}
+# 마스킹 대상 키 → 마스킹 함수 (snake_case + 백엔드 DTO camelCase 모두)
+_PHONE_KEYS = {"customer_phone", "customerPhone", "phone"}
+_NAME_KEYS = {"customer_name", "customerName", "name"}
 # 절대 로깅 금지(전체 가림) — 실수로 넘겨도 원문이 남지 않게.
 _BLOCK_KEYS = {"jwt", "token", "authorization", "password", "secret", "api_key", "apikey"}
 

@@ -21,7 +21,7 @@ class ConfirmRequest(BaseModel):
 
 class ConfirmResponse(BaseModel):
     action: str
-    result: Any
+    result: dict[str, Any]
 
 
 @router.post("/confirm", response_model=ConfirmResponse)
@@ -39,10 +39,15 @@ async def confirm(
         audit_event("confirm_access_denied", user_id=ctx.user_id, proposal_id=req.proposal_id)
         raise HTTPException(status_code=403, detail="proposal access denied") from None
 
-    audit_event("write_executed", user_id=ctx.user_id, action=pending.action)
     try:
         result = await execute(backend, ctx, pending)
     except BackendError:
+        audit_event("write_failed", user_id=ctx.user_id, action=pending.action)
         raise HTTPException(status_code=502, detail="예약 생성 중 백엔드 오류가 발생했어요.") from None
+    except ValueError:
+        # 알 수 없는 action(서버 내부 stored 값) — 500 대신 400으로.
+        raise HTTPException(status_code=400, detail="처리할 수 없는 요청입니다.") from None
 
+    # payload는 audit_event가 PII를 자동 마스킹(deep)하므로 안전하게 기록.
+    audit_event("write_executed", user_id=ctx.user_id, action=pending.action, payload=pending.payload)
     return ConfirmResponse(action=pending.action, result=result)

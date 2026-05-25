@@ -76,14 +76,18 @@ async def test_ocr_returns_card_and_stores_pending():
 async def test_ocr_unreadable_image_returns_422():
     app = _ocr_app(_VisionModel("이미지를 못 읽었어요"), PendingWriteStore(FakeAsyncRedis(), ttl_seconds=600))
     async with _client(app) as c:
-        r = await c.post("/ocr/reservation", json={"image_url": "x"}, headers={"Authorization": "Bearer jwt"})
+        r = await c.post(
+            "/ocr/reservation",
+            json={"image_url": "https://img.example/bad.png"},
+            headers={"Authorization": "Bearer jwt"},
+        )
     assert r.status_code == 422
 
 
 async def test_ocr_requires_auth():
     app = _ocr_app(_VisionModel("{}"), PendingWriteStore(FakeAsyncRedis(), ttl_seconds=600))
     async with _client(app) as c:
-        r = await c.post("/ocr/reservation", json={"image_url": "x"})
+        r = await c.post("/ocr/reservation", json={"image_url": "https://img.example/x.png"})
     assert r.status_code == 401
 
 

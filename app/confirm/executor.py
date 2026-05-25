@@ -12,5 +12,6 @@ from app.session.models import PendingWrite
 
 async def execute(client: BackendClient, ctx: RequestContext, pending: PendingWrite) -> Any:
     if pending.action == "create_reservation":
-        return await client.post("/reservations", jwt=ctx.jwt, json=pending.payload)
+        # 쓰기는 재시도 없음 — 5xx 재시도가 예약을 중복 생성하는 것을 방지(멱등성 보장 없음).
+        return await client.post("/reservations", jwt=ctx.jwt, json=pending.payload, max_retries=0)
     raise ValueError(f"unknown write action: {pending.action}")

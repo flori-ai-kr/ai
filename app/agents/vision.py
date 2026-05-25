@@ -5,8 +5,8 @@
 """
 
 import json
-from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
@@ -30,7 +30,7 @@ class VisionExtractionError(Exception):
     """이미지에서 구조화된 예약 정보를 추출하지 못함."""
 
 
-def _extract_json(text: str) -> dict[str, Any]:
+def _extract_json(text: str) -> dict:
     """코드펜스/잡텍스트에 견고하게 첫 JSON 객체를 파싱."""
     start = text.find("{")
     end = text.rfind("}")
@@ -39,7 +39,7 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(text[start : end + 1])
 
 
-async def extract_reservation_draft(model: Any, image_url: str) -> ReservationDraft:
+async def extract_reservation_draft(model: BaseChatModel, image_url: str) -> ReservationDraft:
     message = HumanMessage(
         content=[
             {"type": "text", "text": _VISION_PROMPT},
