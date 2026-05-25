@@ -95,6 +95,37 @@ def test_ws_empty_transcript_sends_error_event():
         ws.send_text(json.dumps({"type": "close"}))
 
 
+def test_ws_rejects_malformed_session_id():
+    client = TestClient(_app())
+    with (
+        client.websocket_connect("/voice/stream?token=jwt&session_id=flori:session:victim") as ws,
+        pytest.raises(WebSocketDisconnect),
+    ):
+        ws.receive_json()
+
+
+def test_ws_rejects_unsupported_content_type():
+    client = TestClient(_app())
+    with client.websocket_connect("/voice/stream?token=jwt") as ws:
+        ws.send_text(json.dumps({"type": "start", "content_type": "application/json"}))
+        e = ws.receive_json()
+        assert e["type"] == "error"
+        ws.send_text(json.dumps({"type": "close"}))
+
+
+def test_ws_rejects_oversized_audio(monkeypatch):
+    import app.api.voice_ws as ws_mod
+
+    monkeypatch.setattr(ws_mod, "_MAX_AUDIO_BYTES", 4)
+    client = TestClient(_app())
+    with client.websocket_connect("/voice/stream?token=jwt") as ws:
+        ws.send_bytes(b"0123456789")
+        m = ws.receive_json()
+        assert m["type"] == "error"
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_json()
+
+
 def test_ws_multiturn_keeps_session():
     client = TestClient(_app())
     with client.websocket_connect("/voice/stream?token=jwt") as ws:

@@ -9,8 +9,13 @@ from pydantic import AfterValidator
 _SAFE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+def is_safe_id(v: str) -> bool:
+    """식별자 형식 검사 (WS 등 Pydantic 밖 경로에서 사용)."""
+    return bool(_SAFE_ID_RE.fullmatch(v))
+
+
 def _validate_safe_id(v: str) -> str:
-    if not _SAFE_ID_RE.fullmatch(v):
+    if not is_safe_id(v):
         raise ValueError("id must be alphanumeric, '-' or '_', up to 64 chars")
     return v
 

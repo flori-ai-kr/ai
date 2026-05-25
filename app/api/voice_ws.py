@@ -12,12 +12,15 @@ C1의 음성 파이프라인(`run_voice_turn`)을 그대로 재사용하되 전�
 후속 작업(인프라 검증 필요). 본 핸들러는 WS 전송·세션·멀티턴을 먼저 확립한다.
 """
 
+import asyncio
 import base64
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.api.validators import is_safe_id
 from app.backend.auth import AuthError
+from app.core.audit import audit_event
 from app.core.usage import UsageCapExceeded
 from app.voice.pipeline import EmptyTranscriptError, run_voice_turn
 from app.voice.ports import VoiceProviderError
@@ -25,7 +28,12 @@ from app.voice.ports import VoiceProviderError
 router = APIRouter()
 
 _WS_POLICY_VIOLATION = 1008
+_WS_INTERNAL_ERROR = 1011
 _MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 누적 상한 (메모리 DoS 방지)
+_IDLE_TIMEOUT_S = 60.0  # 유휴 연결 점유 방지
+_TURN_TIMEOUT_S = 60.0  # 한 턴 처리 상한
+# C1(voice.py)과 동일한 허용 포맷 — Transcribe 스트리밍 호환.
+_ALLOWED_CONTENT_TYPES = frozenset({"audio/wav", "audio/pcm", "audio/ogg", "audio/x-wav"})
 
 
 @router.websocket("/voice/stream")
@@ -46,12 +54,19 @@ async def voice_stream(websocket: WebSocket) -> None:
         return
 
     session_id: str | None = websocket.query_params.get("session_id") or None
+    if session_id is not None and not is_safe_id(session_id):
+        await websocket.close(code=_WS_POLICY_VIOLATION)  # Redis 키 오염 방지
+        return
     content_type = "audio/wav"
     buffer = bytearray()
 
     try:
         while True:
-            message = await websocket.receive()
+            try:
+                message = await asyncio.wait_for(websocket.receive(), timeout=_IDLE_TIMEOUT_S)
+            except TimeoutError:
+                await websocket.close(code=1001)  # going away — 유휴 타임아웃
+                return
             if message["type"] == "websocket.disconnect":
                 break
 
@@ -75,7 +90,11 @@ async def voice_stream(websocket: WebSocket) -> None:
 
             etype = event.get("type")
             if etype == "start":
-                content_type = event.get("content_type", content_type)
+                new_ct = event.get("content_type", content_type)
+                if new_ct not in _ALLOWED_CONTENT_TYPES:
+                    await websocket.send_json({"type": "error", "detail": "unsupported content_type"})
+                    continue
+                content_type = new_ct
                 buffer.clear()
             elif etype == "close":
                 break
@@ -84,31 +103,42 @@ async def voice_stream(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "error", "detail": "no audio received"})
                     continue
                 try:
-                    result = await run_voice_turn(
-                        stt=state.stt,
-                        tts=state.tts,
-                        model=state.chat_model,
-                        client=state.backend,
-                        ctx=ctx,
-                        audio=bytes(buffer),
-                        content_type=content_type,
-                        store=state.session_store,
-                        session_id=session_id,
+                    result = await asyncio.wait_for(
+                        run_voice_turn(
+                            stt=state.stt,
+                            tts=state.tts,
+                            model=state.chat_model,
+                            client=state.backend,
+                            ctx=ctx,
+                            audio=bytes(buffer),
+                            content_type=content_type,
+                            store=state.session_store,
+                            session_id=session_id,
+                        ),
+                        timeout=_TURN_TIMEOUT_S,
                     )
                 except EmptyTranscriptError:
                     await websocket.send_json({"type": "error", "detail": "no speech recognized"})
                     buffer.clear()
                     continue
                 except PermissionError:
+                    audit_event("session_access_denied", user_id=ctx.user_id, session_id=session_id)
                     await websocket.send_json({"type": "error", "detail": "session access denied"})
                     await websocket.close(code=_WS_POLICY_VIOLATION)
                     return
-                except VoiceProviderError:
-                    await websocket.send_json({"type": "error", "detail": "voice provider error"})
+                except (VoiceProviderError, TimeoutError):
+                    audit_event("voice_provider_error", user_id=ctx.user_id, session_id=session_id)
+                    await websocket.send_json({"type": "error", "detail": "voice processing failed"})
                     buffer.clear()
                     continue
+                except Exception:
+                    audit_event("voice_ws_unexpected_error", user_id=ctx.user_id, session_id=session_id)
+                    await websocket.send_json({"type": "error", "detail": "internal error"})
+                    await websocket.close(code=_WS_INTERNAL_ERROR)
+                    return
 
                 session_id = result["session_id"]  # sticky — 다음 턴에 재사용
+                audit_event("voice_turn", user_id=ctx.user_id, session_id=session_id)
                 await websocket.send_json({"type": "transcript", "text": result["transcript"]})
                 await websocket.send_json({"type": "reply", "text": result["reply"], "session_id": session_id})
                 await websocket.send_json(
