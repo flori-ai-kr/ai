@@ -20,7 +20,7 @@
 | SPEC-AI-001 | DONE | DESIGN 승인 | **Foundation**: FastAPI+LangGraph 스켈레톤, 유저 JWT 검증/전달 인증(`/me` 인트로스펙션 + 패스스루), 백엔드 REST 도구 클라이언트(httpx, 재시도/타임아웃), LiteLLM 연동(Claude Haiku 4.5), Redis 세션(session_id+턴 추상화), 로컬 docker-compose(ai-server+redis), `/health`, 유저별 사용량 캡 자리, AI 행위 감사 로깅, `.env.example`, pyproject(uv)·ruff·pytest. **28 tests 통과** |
 | SPEC-AI-002 | DONE | 001 | **A 데이터 분석 (읽기전용)**: 통계/대시보드 읽기 도구(`/dashboard/month`, `/dashboard/today`, `/sales`, `/customers` 래퍼) + ReAct 도구콜 루프 + `POST /chat`로 "이번 달 매출 왜 떨어졌어?" 류 LLM 해설. 쓰기 없음. **41 tests 통과** |
 | SPEC-AI-003 | DONE | 001, 002 | **B OCR→예약**: 이미지 → 비전 LLM(Haiku 4.5) 추출 → 예약 후보 → **확인 카드(human-in-loop)** `POST /ocr/reservation` → 확인 `POST /confirm` 시 `POST /reservations`. 쓰기는 confirm 경유만(에이전트 루프는 is_write 차단). proposal: user_id 바인딩·TTL·1회성. **65 tests 통과** |
-| SPEC-AI-004 | TODO | 001, 003 | **C1 음성 푸시투토크**: STT(확정 예정) → 텍스트 → 에이전트 도구 호출 → 응답 텍스트 → TTS. HTTP/SSE 전송. 대화 세션 추상화 위에서 동작. STT/TTS 프로바이더 추상화(교체 가능) |
+| SPEC-AI-004 | DONE | 001, 003 | **C1 음성 푸시투토크**: `POST /voice/turn`(audio base64) → STT(AWS Transcribe) → ReAct 에이전트(A 재사용) → TTS(AWS Polly) → 음성 응답. STT/TTS Port 추상화(교체 가능). 전송 HTTP. **77 tests 통과** |
 | SPEC-AI-005 | TODO | 004 | **C2 실시간 음성**: WebSocket/WebRTC 전송으로 교체(전송계층만). 세션·턴 추상화 재사용. 부분 인식·바지인(barge-in) 고려 |
 | SPEC-AI-006 | TODO | 002, 003, 004 | **D 에이전트 확장**: A·B·C 도구를 묶은 다단계 에이전트 + 선제 제안(예: "내일 예약 3건, 리마인더 보낼까요?"). Langfuse 트레이싱 도입 검토 |
 

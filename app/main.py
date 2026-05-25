@@ -11,13 +11,14 @@ from fastapi import FastAPI
 from redis.asyncio import from_url
 
 from app.agents.llm_client import build_chat_model
-from app.api import chat, confirm, health, ocr, whoami
+from app.api import chat, confirm, health, ocr, voice, whoami
 from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
 from app.confirm.store import PendingWriteStore
 from app.core.config import get_settings
 from app.core.usage import UsageLimiter
 from app.session.store import SessionStore
+from app.voice.aws import PollyTts, TranscribeStt
 
 
 @asynccontextmanager
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_store = SessionStore(redis, ttl_seconds=settings.session_ttl_seconds)
     app.state.pending_store = PendingWriteStore(redis, ttl_seconds=settings.pending_ttl_seconds)
     app.state.chat_model = build_chat_model(settings)
+    app.state.stt = TranscribeStt(language=settings.transcribe_language, region=settings.aws_region)
+    app.state.tts = PollyTts(voice=settings.polly_voice, region=settings.aws_region)
 
     try:
         yield
@@ -49,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(ocr.router)
     app.include_router(confirm.router)
+    app.include_router(voice.router)
     return app
 
 

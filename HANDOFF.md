@@ -4,18 +4,19 @@
 
 ## 현재 상태 (2026-05-25)
 
-**Phase 1 — AI-001·AI-002 머지 완료. SPEC-AI-003(B OCR→예약) 구현 완료, PR(→ dev) 진행.**
+**Phase 1 — AI-001·002·003 머지 완료. SPEC-AI-004(C1 음성) 구현 완료, PR(→ dev) 진행.**
 
 ### 완료
 - DESIGN 승인. 부트스트랩 + GitHub `flori-ai-kr/ai`(public, dev 디폴트, 라벨·About·CI). README 영어.
 - **AI-001(Foundation)** — 머지(PR #1). FastAPI, 인증(`/me` 패스스루), 백엔드 클라이언트, Redis 세션, 캡, 감사, LiteLLM, LangGraph 스켈레톤, 로컬 스택.
-- **AI-002(A 데이터 분석)** — 머지(PR #2). 읽기 도구 레지스트리 + ReAct 루프 + `POST /chat`. 읽기전용.
-- **AI-003(B OCR→예약)** (`feature/SPEC-AI-003`): 비전 추출(`extract_reservation_draft`, 멀티모달+JSON 파싱), `PendingWrite` 저장소(Redis, proposal_id·user_id·TTL·1회성), confirm executor(`POST /reservations`), `POST /ocr/reservation`(→ ConfirmationCard), `POST /confirm`(→ 실행). **첫 쓰기 경로** — human-in-loop. 에이전트 루프는 is_write 차단 유지.
-- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 65 passed**.
+- **AI-002(A 데이터 분석)** — 머지(PR #2). 읽기 도구 레지스트리 + ReAct 루프 + `POST /chat`.
+- **AI-003(B OCR→예약)** — 머지(PR #3). 비전 추출 → ConfirmationCard(human-in-loop) → `POST /confirm` → `POST /reservations`. 첫 쓰기 경로.
+- **AI-004(C1 음성)** (`feature/SPEC-AI-004`): STT/TTS Port(`app/voice/ports.py`) + AWS 어댑터(`app/voice/aws.py`: Transcribe 스트리밍, Polly Seoyeon) + `run_voice_turn`(STT→A 에이전트→TTS) + `POST /voice/turn`(audio base64). STT/TTS = **AWS Transcribe/Polly 확정**.
+- 검증: `ruff` clean · `format` clean · **pytest 77 passed**.
 
 ### 다음 할 일
-1. `feature/SPEC-AI-003` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
-2. 머지 후 → SPEC-AI-004(C1 음성 푸시투토크: STT→에이전트→TTS, 전송 HTTP/SSE) 착수. STT/TTS 프로바이더 확정 필요(DESIGN §14-6).
+1. `feature/SPEC-AI-004` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
+2. 머지 후 → SPEC-AI-005(C2 실시간 음성: WS/WebRTC 전송으로 교체, 동일 파이프라인 재사용) 착수.
 
 ### 블로커
 - 없음.

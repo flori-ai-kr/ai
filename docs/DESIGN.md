@@ -200,10 +200,10 @@ general_settings:
 - `POST /confirm {proposal_id}` → 소유자 검증 → `app/confirm/executor.py`가 `POST /reservations`(JWT 패스스루) 실행. 미존재/만료 404, 타 유저 403, 실행 후 삭제.
 - **쓰기 게이팅**: 에이전트 ReAct 루프는 is_write 도구를 차단(직접 실행 불가). 쓰기는 confirm 경유만.
 
-### 9.3 C — 음성 (SPEC-AI-004 C1 → SPEC-AI-005 C2)
-- C1 푸시투토크: 앱이 녹음 → 업로드 → STT → 텍스트 턴으로 그래프 진입 → 응답 텍스트 → TTS → 음성 반환(HTTP/SSE).
-- C2 실시간: 전송계층을 WS/WebRTC로 교체. 부분 인식·바지인 고려. 세션·턴 추상화 재사용.
-- STT/TTS 프로바이더는 Port로 추상화 — AWS Transcribe/Polly vs Naver Clova vs OpenAI를 한국어·꽃 도메인 기준으로 C 단계에서 확정.
+### 9.3 C — 음성 (SPEC-AI-004 C1 ✅ → SPEC-AI-005 C2)
+- C1 푸시투토크 ✅: `POST /voice/turn`(audio base64) → STT → `run_agent`(A 재사용) → TTS → 음성(base64) 반환. 세션 턴 기록(kind=audio). `app/voice/pipeline.py`.
+- **STT/TTS = AWS Transcribe/Polly**(확정). Port 추상화(`app/voice/ports.py`) — `SttProvider`/`TtsProvider`. 어댑터 `app/voice/aws.py`(`TranscribeStt` 스트리밍, `PollyTts` boto3, voice=Seoyeon, ko-KR). 실 AWS 호출은 인프라에서 검증.
+- C2 실시간: 전송계층을 WS/WebRTC로 교체. 부분 인식·바지인 고려. 동일 파이프라인 재사용.
 
 ### 9.4 D — 에이전트 확장 (SPEC-AI-006)
 - A·B·C 도구를 묶은 다단계 에이전트 + 선제 제안(예: "내일 예약 3건 — 리마인더 보낼까요?"). 선제 제안도 쓰기는 확인 게이팅.
