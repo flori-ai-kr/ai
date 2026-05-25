@@ -20,5 +20,9 @@ def build_system_prompt() -> str:
 
 
 def fence_user_input(text: str) -> str:
-    """사용자 입력을 펜스로 감싸 시스템 지시와 분리한다(프롬프트 인젝션 방어)."""
-    return f"{_FENCE_OPEN}\n{text}\n{_FENCE_CLOSE}"
+    """사용자 입력을 펜스로 감싸 시스템 지시와 분리한다(프롬프트 인젝션 방어).
+
+    입력에 포함된 펜스 토큰은 무력화해 조기 종료(펜스 브레이크아웃)를 막는다.
+    """
+    sanitized = text.replace(_FENCE_OPEN, "[USER INPUT (escaped)]").replace(_FENCE_CLOSE, "[END USER INPUT (escaped)]")
+    return f"{_FENCE_OPEN}\n{sanitized}\n{_FENCE_CLOSE}"

@@ -7,8 +7,9 @@ LLM에 도구를 bind → tool_calls 디스패치 → ToolMessage 누적 → 최
 """
 
 import json
-from typing import Any
+import uuid
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.agents.prompts import build_system_prompt, fence_user_input
@@ -19,6 +20,13 @@ from app.session.models import Turn
 from app.tools.registry import dispatch, tool_schemas
 
 _CAP_FALLBACK = "지금은 분석을 끝맺지 못했어요. 잠시 후 다시 시도해 주세요."
+_MAX_TOOL_RESULT_CHARS = 8_000  # ToolMessage 1건 상한 — 컨텍스트 폭주/메모리 DoS 방지
+
+
+def _truncate_result(raw: str) -> str:
+    if len(raw) > _MAX_TOOL_RESULT_CHARS:
+        return raw[:_MAX_TOOL_RESULT_CHARS] + "\n...[truncated]"
+    return raw
 
 
 def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
@@ -33,7 +41,7 @@ def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
 
 async def run_agent(
     *,
-    model: Any,
+    model: BaseChatModel,
     client: BackendClient,
     ctx: RequestContext,
     user_text: str,
@@ -58,12 +66,13 @@ async def run_agent(
         for call in tool_calls:
             name = call["name"]
             args = call.get("args") or {}
-            call_id = call.get("id") or name
+            # id가 없으면 고유값 생성 — 동일 도구 연속 호출이 tool_call_id를 공유하는 버그 방지
+            call_id = call.get("id") or f"{name}-{uuid.uuid4().hex[:8]}"
             audit_event("tool_call", user_id=ctx.user_id, tool=name, args=args)
             result = await dispatch(client, ctx, name, args)
-            messages.append(
-                ToolMessage(content=json.dumps(result, ensure_ascii=False, default=str), tool_call_id=call_id)
-            )
+            content = _truncate_result(json.dumps(result, ensure_ascii=False, default=str))
+            messages.append(ToolMessage(content=content, tool_call_id=call_id))
 
     # iteration cap 도달 — 무한 루프 방지
+    audit_event("agent_cap_reached", user_id=ctx.user_id, iterations=max_iterations)
     return _CAP_FALLBACK
