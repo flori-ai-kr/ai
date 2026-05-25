@@ -21,7 +21,7 @@
 | SPEC-AI-002 | DONE | 001 | **A 데이터 분석 (읽기전용)**: 통계/대시보드 읽기 도구(`/dashboard/month`, `/dashboard/today`, `/sales`, `/customers` 래퍼) + ReAct 도구콜 루프 + `POST /chat`로 "이번 달 매출 왜 떨어졌어?" 류 LLM 해설. 쓰기 없음. **41 tests 통과** |
 | SPEC-AI-003 | DONE | 001, 002 | **B OCR→예약**: 이미지 → 비전 LLM(Haiku 4.5) 추출 → 예약 후보 → **확인 카드(human-in-loop)** `POST /ocr/reservation` → 확인 `POST /confirm` 시 `POST /reservations`. 쓰기는 confirm 경유만(에이전트 루프는 is_write 차단). proposal: user_id 바인딩·TTL·1회성. **65 tests 통과** |
 | SPEC-AI-004 | DONE | 001, 003 | **C1 음성 푸시투토크**: `POST /voice/turn`(audio base64) → STT(AWS Transcribe) → ReAct 에이전트(A 재사용) → TTS(AWS Polly) → 음성 응답. STT/TTS Port 추상화(교체 가능). 전송 HTTP. **77 tests 통과** |
-| SPEC-AI-005 | TODO (보류) | 004 | **C2 실시간 음성**: WebSocket/WebRTC 전송으로 교체(전송계층만). 세션·턴 추상화 재사용. 부분 인식·바지인. 사용자 선택으로 D 우선 진행 → 추후 |
+| SPEC-AI-005 | DONE | 004 | **C2 실시간 음성**: `WS /voice/stream`(WebSocket 전송) — `run_voice_turn` 재사용, 멀티턴·session_id sticky, 토큰 인증·오디오 누적 상한. WebRTC 및 서브-발화 실시간 partial/바지인은 인프라 필요 → 후속. **94 tests 통과** |
 | SPEC-AI-006 | DONE | 002, 003, 004 | **D 에이전트 확장**: 선제 제안 `GET /agent/proactive`(읽기 컨텍스트 → LLM 제안, fail-open) + Langfuse 관측성 seam(`@observe` no-op 폴백, `run_agent`/proactive 적용). 제안→실행은 confirm 경유 유지. **90 tests 통과** |
 
 ## 진행 규칙

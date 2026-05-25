@@ -203,7 +203,7 @@ general_settings:
 ### 9.3 C — 음성 (SPEC-AI-004 C1 ✅ → SPEC-AI-005 C2)
 - C1 푸시투토크 ✅: `POST /voice/turn`(audio base64) → STT → `run_agent`(A 재사용) → TTS → 음성(base64) 반환. 세션 턴 기록(kind=audio). `app/voice/pipeline.py`.
 - **STT/TTS = AWS Transcribe/Polly**(확정). Port 추상화(`app/voice/ports.py`) — `SttProvider`/`TtsProvider`. 어댑터 `app/voice/aws.py`(`TranscribeStt` 스트리밍, `PollyTts` boto3, voice=Seoyeon, ko-KR). 실 AWS 호출은 인프라에서 검증.
-- C2 실시간: 전송계층을 WS/WebRTC로 교체. 부분 인식·바지인 고려. 동일 파이프라인 재사용.
+- C2 실시간 ✅: `WS /voice/stream`(WebSocket 전송, `app/api/voice_ws.py`) — **전송계층만 교체**하고 `run_voice_turn` 재사용. 멀티턴·session_id sticky, 쿼리 토큰 인증, 오디오 누적 상한, event 프로토콜(transcript/reply/audio/error/done). WebRTC(TURN/시그널링) + 서브-발화 실시간 partial/바지인(Transcribe 스트리밍 실시간 공급)은 인프라 필요 → 후속.
 
 ### 9.4 D — 에이전트 확장 (SPEC-AI-006) ✅ 구현
 - **선제 제안** `GET /agent/proactive`: 읽기 도구(`/dashboard/today`·`/reservations/upcoming`)로 컨텍스트 수집 → LLM이 `Suggestion{title, detail}` 목록 생성(`app/agents/proactive.py`). 읽기전용·fail-open. 컨텍스트는 데이터로 펜스 격리.
