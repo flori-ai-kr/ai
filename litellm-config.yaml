@@ -1,5 +1,4 @@
 # LiteLLM 프록시 설정 — Flori AI 단일 모델(Claude Haiku 4.5, 멀티모달).
-# 형식 참고: ~/Desktop/aws-infra/kikoai-dev-servers/ai/config/litellm.yaml
 # 시크릿(master key, AWS 자격)은 env로만 주입한다.
 
 model_list:

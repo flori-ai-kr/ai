@@ -23,5 +23,9 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY --from=builder /app/.venv /app/.venv
 COPY app ./app
 
+# 비-root 실행 (컨테이너 탈출 시 영향 최소화)
+RUN addgroup --system flori && adduser --system --ingroup flori flori
+USER flori
+
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

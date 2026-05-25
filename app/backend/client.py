@@ -63,8 +63,9 @@ class BackendClient:
             if resp.status_code >= 500 and attempt < self._max_retries:
                 continue  # 일시적 서버 오류 → 재시도
             if resp.status_code >= 400:
+                # 메시지엔 상태코드만 — 내부 경로/메서드는 노출하지 않는다.
                 raise BackendError(
-                    f"backend error {resp.status_code} for {method} {path}",
+                    f"backend error {resp.status_code}",
                     status_code=resp.status_code,
                 )
             if resp.status_code == 204 or not resp.content:

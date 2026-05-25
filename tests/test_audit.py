@@ -32,3 +32,12 @@ def test_audit_event_emits_structured_json_with_masked_pii(caplog):
     assert payload["customer_phone"] == "010-****-5678"
     assert payload["customer_name"] == "김**"
     assert payload["amount"] == 30000
+
+
+def test_audit_event_redacts_secret_keys(caplog):
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        audit_event("tool_call", user_id="u1", jwt="eyJhbGci.secret", token="abc", password="pw")
+    payload = json.loads(caplog.records[0].getMessage())
+    assert payload["jwt"] == "[REDACTED]"
+    assert payload["token"] == "[REDACTED]"
+    assert payload["password"] == "[REDACTED]"

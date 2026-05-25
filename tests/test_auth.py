@@ -54,3 +54,16 @@ async def test_cache_expires_after_ttl():
     await auth.authenticate("jwt-1")  # call 2
     assert route.call_count == 2
     await client.aclose()
+
+
+@respx.mock
+async def test_expired_cache_entries_are_evicted():
+    respx.get("http://backend.test/me").mock(return_value=httpx.Response(200, json={"id": "u1"}))
+    clock = {"t": 1000.0}
+    auth, client = _make_auth(ttl=60, now_fn=lambda: clock["t"])
+    await auth.authenticate("jwt-A")
+    clock["t"] += 100  # jwt-A 만료
+    await auth.authenticate("jwt-B")  # 다른 토큰 인증 시 만료 엔트리 퇴거
+    assert "jwt-A" not in auth._cache
+    assert "jwt-B" in auth._cache
+    await client.aclose()

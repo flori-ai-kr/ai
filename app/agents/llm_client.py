@@ -15,6 +15,7 @@ def build_chat_model(settings: Settings, *, temperature: float = 0.0) -> ChatOpe
         model=settings.llm_model,
         base_url=settings.litellm_base_url,
         # 로컬/테스트에서 LiteLLM master key 미설정 시에도 구성은 성공해야 한다.
-        api_key=settings.litellm_api_key or "sk-local-noop",
+        # ("sk-" 접두사를 피해 시크릿 스캐너 오탐 방지)
+        api_key=settings.litellm_api_key or "local-noop",
         temperature=temperature,
     )

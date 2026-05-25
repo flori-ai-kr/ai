@@ -6,7 +6,7 @@ services:
     image: redis:7-alpine
     container_name: flori-ai-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"  # 로컬호스트만 바인딩 (인증 없는 Redis 외부 노출 방지)
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

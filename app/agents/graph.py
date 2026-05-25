@@ -7,6 +7,7 @@
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 
 class SkeletonState(TypedDict):
@@ -18,7 +19,7 @@ def _echo_node(state: SkeletonState) -> dict:
     return {"output": state["input"]}
 
 
-def build_skeleton_graph():
+def build_skeleton_graph() -> CompiledStateGraph:
     """최소 StateGraph: 입력을 그대로 출력으로 흘려보낸다(골격 검증용)."""
     graph = StateGraph(SkeletonState)
     graph.add_node("echo", _echo_node)

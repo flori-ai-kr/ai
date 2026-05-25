@@ -33,15 +33,20 @@ class SessionStore:
     async def get_or_create(self, session_id: str, user_id: str) -> Session:
         existing = await self.get(session_id)
         if existing is not None:
+            # 세션은 AI 서버 내부 자원 — 소유자 검증을 직접 강제(IDOR 방어).
+            if existing.user_id != user_id:
+                raise PermissionError(f"session {session_id} is not owned by the caller")
             return existing
         session = Session(session_id=session_id, user_id=user_id)
         await self.save(session)
         return session
 
-    async def append_turn(self, session_id: str, turn: Turn) -> Session:
+    async def append_turn(self, session_id: str, turn: Turn, *, user_id: str) -> Session:
         session = await self.get(session_id)
         if session is None:
             raise KeyError(f"session not found: {session_id}")
+        if session.user_id != user_id:
+            raise PermissionError(f"session {session_id} is not owned by the caller")
         session.turns.append(turn)
         await self.save(session)
         return session

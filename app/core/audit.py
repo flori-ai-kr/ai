@@ -9,6 +9,8 @@ _logger = logging.getLogger("flori.audit")
 # 마스킹 대상 키 → 마스킹 함수
 _PHONE_KEYS = {"customer_phone", "phone"}
 _NAME_KEYS = {"customer_name", "name"}
+# 절대 로깅 금지(전체 가림) — 실수로 넘겨도 원문이 남지 않게.
+_BLOCK_KEYS = {"jwt", "token", "authorization", "password", "secret", "api_key", "apikey"}
 
 
 def mask_phone(value: str) -> str:
@@ -37,6 +39,8 @@ def mask_name(value: str) -> str:
 
 
 def _mask(key: str, value: Any) -> Any:
+    if key.lower() in _BLOCK_KEYS:
+        return "[REDACTED]"
     if key in _PHONE_KEYS and isinstance(value, str):
         return mask_phone(value)
     if key in _NAME_KEYS and isinstance(value, str):

@@ -1,3 +1,4 @@
+import pytest
 from fakeredis import FakeAsyncRedis
 
 from app.session.models import Session, Turn
@@ -36,10 +37,25 @@ async def test_save_and_get_roundtrip():
 async def test_append_turn_persists():
     store = _store()
     await store.get_or_create("s", "u1")
-    updated = await store.append_turn("s", Turn(role="assistant", text="객단가가 낮아졌어요"))
+    updated = await store.append_turn("s", Turn(role="assistant", text="객단가가 낮아졌어요"), user_id="u1")
     assert len(updated.turns) == 1
 
     reloaded = await store.get("s")
     assert reloaded is not None
     assert len(reloaded.turns) == 1
     assert isinstance(reloaded, Session)
+
+
+async def test_get_or_create_rejects_other_users_session():
+    store = _store()
+    await store.get_or_create("sess-1", "owner")
+    # 다른 유저가 같은 session_id로 접근 → 거부 (IDOR 방어)
+    with pytest.raises(PermissionError):
+        await store.get_or_create("sess-1", "intruder")
+
+
+async def test_append_turn_rejects_other_user():
+    store = _store()
+    await store.get_or_create("sess-1", "owner")
+    with pytest.raises(PermissionError):
+        await store.append_turn("sess-1", Turn(role="user", text="hi"), user_id="intruder")

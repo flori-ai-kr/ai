@@ -27,11 +27,16 @@ class UsageLimiter:
         return f"{self._prefix}:{user_id}:{day}"
 
     async def enforce(self, user_id: str) -> int:
-        """오늘 카운터를 1 증가시키고 현재 값을 반환. 한도 초과 시 예외."""
+        """오늘 카운터를 1 증가시키고 현재 값을 반환. 한도 초과 시 예외.
+
+        INCR+EXPIRE를 트랜잭션(MULTI/EXEC)으로 묶어 원자 처리한다. EXPIRE를 매번
+        호출해도 키가 날짜 스탬프이므로 의미가 동일하고, INCR 후 TTL 누락(영구 잔존)을 막는다.
+        """
         key = self._day_key(user_id)
-        count = await self._redis.incr(key)
-        if count == 1:
-            await self._redis.expire(key, _TTL_SECONDS)
+        async with self._redis.pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, _TTL_SECONDS)
+            count, _ = await pipe.execute()
         if count > self._cap:
             raise UsageCapExceeded(f"daily usage cap exceeded: {count} > {self._cap}")
         return count

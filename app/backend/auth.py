@@ -34,11 +34,18 @@ class Authenticator:
         self._now = now_fn or time.monotonic
         self._cache: dict[str, tuple[str, float]] = {}  # jwt -> (user_id, expires_at)
 
+    def _evict_expired(self, now: float) -> None:
+        """만료 엔트리 정리 — 토큰이 요청마다 바뀌는 환경의 메모리 누수 방지."""
+        expired = [k for k, (_, exp) in self._cache.items() if exp <= now]
+        for k in expired:
+            del self._cache[k]
+
     async def authenticate(self, jwt: str) -> RequestContext:
         now = self._now()
         cached = self._cache.get(jwt)
         if cached is not None and cached[1] > now:
             return RequestContext(user_id=cached[0], jwt=jwt)
+        self._evict_expired(now)
 
         try:
             me = await self._backend.get("/me", jwt=jwt)
@@ -46,7 +53,8 @@ class Authenticator:
             self._cache.pop(jwt, None)
             raise AuthError("invalid or expired JWT") from exc
         except BackendError as exc:
-            raise AuthError(f"auth introspection failed: {exc}") from exc
+            # 원인은 체인(from exc)으로만 보존하고, 메시지엔 내부 경로/상태를 노출하지 않는다.
+            raise AuthError("auth introspection failed") from exc
 
         user_id = me.get("id") if isinstance(me, dict) else None
         if not user_id:

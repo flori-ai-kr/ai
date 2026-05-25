@@ -1,5 +1,8 @@
 """FastAPI 의존성. app.state의 자원을 주입하고, 인증·사용량 캡을 강제한다."""
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from fastapi import Depends, HTTPException, Request
 
 from app.backend.auth import Authenticator, AuthError, RequestContext
@@ -7,6 +10,14 @@ from app.core.usage import UsageCapExceeded, UsageLimiter
 from app.session.store import SessionStore
 
 _BEARER_PREFIX = "Bearer "
+_KST = ZoneInfo("Asia/Seoul")
+
+
+def _seconds_until_kst_midnight() -> int:
+    """일일 캡 리셋(KST 자정)까지 남은 초 — 429 Retry-After용."""
+    now = datetime.now(_KST)
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return int((midnight - now).total_seconds())
 
 
 def get_authenticator(request: Request) -> Authenticator:
@@ -42,6 +53,10 @@ async def get_request_context(
     try:
         await usage.enforce(ctx.user_id)
     except UsageCapExceeded:
-        raise HTTPException(status_code=429, detail="daily usage cap exceeded") from None
+        raise HTTPException(
+            status_code=429,
+            detail="daily usage cap exceeded",
+            headers={"Retry-After": str(_seconds_until_kst_midnight())},
+        ) from None
 
     return ctx
