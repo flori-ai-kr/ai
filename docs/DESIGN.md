@@ -194,10 +194,11 @@ general_settings:
 - 진입: `POST /chat` 텍스트 턴. ReAct 루프가 6.1 읽기 도구를 호출 → LLM이 수치를 근거로 해설("객단가 ↓, 카드결제 비중 ↑" 등).
 - 가장 저렴·저위험 → **도구콜 루프를 끝까지 검증**하는 기준점. 쓰기 없음.
 
-### 9.2 B — OCR→예약 (SPEC-AI-003)
-- 진입: `POST /chat` 이미지 턴(카톡 스크린샷). 비전 LLM이 `{customerName, phone?, date, time?, items[], amount?}` 구조화 추출.
-- 날짜·시간 파싱(상대표현 "내일 2시" → KST 절대시각), 누락 필드 질의(clarify).
-- `propose_reservation` → 확인 카드 → 확인 시 `find_or_create_customer` + `POST /reservations`.
+### 9.2 B — OCR→예약 (SPEC-AI-003) ✅ 구현
+- `POST /ocr/reservation {image_url}` → 비전 LLM(Haiku 4.5)이 `ReservationDraft{customer_name, customer_phone?, date, time?, title, amount?}` 추출(`app/agents/vision.py`).
+- 추출 결과는 **제안일 뿐** — `PendingWrite`(Redis, proposal_id·user_id 바인딩·TTL·1회성)로 저장하고 `ConfirmationCard`를 반환.
+- `POST /confirm {proposal_id}` → 소유자 검증 → `app/confirm/executor.py`가 `POST /reservations`(JWT 패스스루) 실행. 미존재/만료 404, 타 유저 403, 실행 후 삭제.
+- **쓰기 게이팅**: 에이전트 ReAct 루프는 is_write 도구를 차단(직접 실행 불가). 쓰기는 confirm 경유만.
 
 ### 9.3 C — 음성 (SPEC-AI-004 C1 → SPEC-AI-005 C2)
 - C1 푸시투토크: 앱이 녹음 → 업로드 → STT → 텍스트 턴으로 그래프 진입 → 응답 텍스트 → TTS → 음성 반환(HTTP/SSE).
@@ -231,7 +232,7 @@ general_settings:
 
 1. **`/me` 인트로스펙션 캐시 TTL** — 60초 제안. 더 짧게/길게?
 2. **사용량 캡 정책** — 무엇을 기준(턴 수/토큰/비용)으로, 윈도우(일/월)는? 구독 등급별 한도는 백엔드에서 받아올지(`GET /subscription`) AI가 자체 테이블로 둘지.
-3. **확인 카드 스키마** — 앱(`flori-ai/mobile`)과 공유할 `ConfirmationCard` JSON 계약. 앱 팀과 합의 필요. 초안: `{proposal_id, action, summary, fields[], expires_at}`.
+3. **확인 카드 스키마** — ✅ 확정(SPEC-AI-003). `ConfirmationCard{proposal_id, action, summary, fields:[{label,value}], expires_at(ISO UTC)}`. 앱(`flori-ai/mobile`)은 이 계약으로 카드를 렌더하고 `POST /confirm {proposal_id}`로 확정. (필드 편집 후 수정 payload 전송은 후속 확장)
 4. **세션 식별** — `session_id`를 앱이 생성/전달할지, AI가 발급할지. 디바이스/유저 단위?
 5. **감사 로그 durable 저장** — v1 Redis+stdout로 시작 후, 백엔드에 `POST /internal/ai-audit` 추가할지.
 6. **STT/TTS 프로바이더** — C 단계에서 확정(보류).

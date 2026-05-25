@@ -4,20 +4,26 @@
 
 ## 현재 상태 (2026-05-25)
 
-**Phase 1 — SPEC-AI-001 머지 완료. SPEC-AI-002(A 데이터 분석) 구현 완료, PR(→ dev) 진행.**
+**Phase 1 — AI-001·AI-002 머지 완료. SPEC-AI-003(B OCR→예약) 구현 완료, PR(→ dev) 진행.**
 
 ### 완료
 - DESIGN 승인. 부트스트랩 + GitHub `flori-ai-kr/ai`(public, dev 디폴트, 라벨·About·CI). README 영어.
-- **SPEC-AI-001(Foundation)** — dev 머지 완료(PR #1). FastAPI 앱, 인증(`/me` 패스스루), 백엔드 클라이언트, Redis 세션, 사용량 캡, 감사 로깅, LiteLLM 팩토리, LangGraph 스켈레톤, 로컬 스택. CI 그린. (신규 org Actions 최초 등록 지연 → 새 이벤트로 정상화됨)
-- **SPEC-AI-002(A 데이터 분석)** (`feature/SPEC-AI-002`): 읽기 도구 레지스트리(`get_month_dashboard`/`get_today_dashboard`/`list_sales`/`list_customers`, JWT 패스스루), ReAct 도구콜 루프(iteration cap·self-correction·감사 로깅), 분석가 시스템 프롬프트(입력 펜스), `POST /chat`(인증+세션+에이전트). 전부 읽기전용.
-- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 41 passed**.
+- **AI-001(Foundation)** — 머지(PR #1). FastAPI, 인증(`/me` 패스스루), 백엔드 클라이언트, Redis 세션, 캡, 감사, LiteLLM, LangGraph 스켈레톤, 로컬 스택.
+- **AI-002(A 데이터 분석)** — 머지(PR #2). 읽기 도구 레지스트리 + ReAct 루프 + `POST /chat`. 읽기전용.
+- **AI-003(B OCR→예약)** (`feature/SPEC-AI-003`): 비전 추출(`extract_reservation_draft`, 멀티모달+JSON 파싱), `PendingWrite` 저장소(Redis, proposal_id·user_id·TTL·1회성), confirm executor(`POST /reservations`), `POST /ocr/reservation`(→ ConfirmationCard), `POST /confirm`(→ 실행). **첫 쓰기 경로** — human-in-loop. 에이전트 루프는 is_write 차단 유지.
+- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 65 passed**.
 
 ### 다음 할 일
-1. `feature/SPEC-AI-002` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
-2. 머지 후 → SPEC-AI-003(B OCR→예약, 비전 + human-in-loop 쓰기) 착수.
+1. `feature/SPEC-AI-003` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
+2. 머지 후 → SPEC-AI-004(C1 음성 푸시투토크: STT→에이전트→TTS, 전송 HTTP/SSE) 착수. STT/TTS 프로바이더 확정 필요(DESIGN §14-6).
 
 ### 블로커
 - 없음.
+
+### 백로그(후속 SPEC 권고)
+- 에이전트: 세션 히스토리 길이 슬라이싱, 백엔드 응답 Pydantic 검증(LLM 출력 안전), REGISTRY name 키 중복 정리.
+- 인증 캐시 멀티워커 시 Redis 이전, 백엔드 클라이언트 timeout 서브클래스.
+- ConfirmationCard 필드 편집 후 수정 payload 확정 경로(앱 협의).
 
 ### 메모
 - 백엔드 REST 표면은 `~/Desktop/hazel-server`에 95개 엔드포인트(JWT `Authorization: Bearer`, `TenantContext` userId 격리). 도구 카탈로그는 DESIGN §6.

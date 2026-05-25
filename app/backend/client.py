@@ -45,22 +45,24 @@ class BackendClient:
         jwt: str,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        max_retries: int | None = None,
     ) -> Any:
         headers = {"Authorization": f"Bearer {jwt}"}
         last_exc: Exception | None = None
+        retries = self._max_retries if max_retries is None else max_retries
 
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(retries + 1):
             try:
                 resp = await self._client.request(method, path, headers=headers, params=params, json=json)
             except httpx.TransportError as exc:  # 네트워크 오류 → 재시도
                 last_exc = exc
-                if attempt < self._max_retries:
+                if attempt < retries:
                     continue
                 raise BackendError(f"backend transport error: {exc}") from exc
 
             if resp.status_code == 401:
                 raise BackendAuthError("backend rejected JWT (401)", status_code=401)
-            if resp.status_code >= 500 and attempt < self._max_retries:
+            if resp.status_code >= 500 and attempt < retries:
                 continue  # 일시적 서버 오류 → 재시도
             if resp.status_code >= 400:
                 # 메시지엔 상태코드만 — 내부 경로/메서드는 노출하지 않는다.
@@ -77,5 +79,7 @@ class BackendClient:
     async def get(self, path: str, *, jwt: str, params: dict[str, Any] | None = None) -> Any:
         return await self.request("GET", path, jwt=jwt, params=params)
 
-    async def post(self, path: str, *, jwt: str, json: dict[str, Any] | None = None) -> Any:
-        return await self.request("POST", path, jwt=jwt, json=json)
+    async def post(
+        self, path: str, *, jwt: str, json: dict[str, Any] | None = None, max_retries: int | None = None
+    ) -> Any:
+        return await self.request("POST", path, jwt=jwt, json=json, max_retries=max_retries)
