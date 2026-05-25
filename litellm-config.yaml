@@ -1,0 +1,16 @@
+# LiteLLM 프록시 설정 — Flori AI 단일 모델(Claude Haiku 4.5, 멀티모달).
+# 시크릿(master key, AWS 자격)은 env로만 주입한다.
+
+model_list:
+  # 텍스트 + Vision 공용 — us. prefix = US cross-region inference profile (us-east-1 기점)
+  - model_name: claude-haiku-4-5
+    litellm_params:
+      model: bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0
+      aws_region_name: us-east-1
+
+litellm_settings:
+  request_timeout: 120
+  num_retries: 2
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY

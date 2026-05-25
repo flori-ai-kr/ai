@@ -1,0 +1,48 @@
+"""FastAPI 엔트리포인트 + lifespan.
+
+lifespan에서 Redis 풀·백엔드 클라이언트·인증기·사용량 캡·세션 스토어를 app.state에
+구성한다(자원 생성은 lazy — 연결은 첫 명령 시). 실제 트래픽 처리는 후속 SPEC.
+"""
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from redis.asyncio import from_url
+
+from app.api import health, whoami
+from app.backend.auth import Authenticator
+from app.backend.client import BackendClient
+from app.core.config import get_settings
+from app.core.usage import UsageLimiter
+from app.session.store import SessionStore
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
+    redis = from_url(settings.redis_url, decode_responses=True)
+    backend = BackendClient(settings.backend_base_url, timeout=settings.request_timeout_seconds)
+
+    app.state.settings = settings
+    app.state.redis = redis
+    app.state.backend = backend
+    app.state.authenticator = Authenticator(backend, cache_ttl_seconds=settings.me_cache_ttl_seconds)
+    app.state.usage_limiter = UsageLimiter(redis, cap=settings.usage_cap_per_day)
+    app.state.session_store = SessionStore(redis, ttl_seconds=settings.session_ttl_seconds)
+
+    try:
+        yield
+    finally:
+        await backend.aclose()
+        await redis.aclose()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Flori AI", version="0.1.0", lifespan=lifespan)
+    app.include_router(health.router)
+    app.include_router(whoami.router)
+    return app
+
+
+app = create_app()
