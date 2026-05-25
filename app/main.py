@@ -10,7 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from redis.asyncio import from_url
 
-from app.api import health, whoami
+from app.agents.llm_client import build_chat_model
+from app.api import chat, health, whoami
 from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
 from app.core.config import get_settings
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.authenticator = Authenticator(backend, cache_ttl_seconds=settings.me_cache_ttl_seconds)
     app.state.usage_limiter = UsageLimiter(redis, cap=settings.usage_cap_per_day)
     app.state.session_store = SessionStore(redis, ttl_seconds=settings.session_ttl_seconds)
+    app.state.chat_model = build_chat_model(settings)
 
     try:
         yield
@@ -42,6 +44,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Flori AI", version="0.1.0", lifespan=lifespan)
     app.include_router(health.router)
     app.include_router(whoami.router)
+    app.include_router(chat.router)
     return app
 
 

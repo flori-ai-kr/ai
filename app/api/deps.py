@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, HTTPException, Request
+from langchain_core.language_models import BaseChatModel
 
 from app.backend.auth import Authenticator, AuthError, RequestContext
+from app.backend.client import BackendClient
 from app.core.usage import UsageCapExceeded, UsageLimiter
 from app.session.store import SessionStore
 
@@ -30,6 +32,14 @@ def get_usage_limiter(request: Request) -> UsageLimiter:
 
 def get_session_store(request: Request) -> SessionStore:
     return request.app.state.session_store
+
+
+def get_backend_client(request: Request) -> BackendClient:
+    return request.app.state.backend
+
+
+def get_chat_model(request: Request) -> BaseChatModel:
+    return request.app.state.chat_model
 
 
 async def get_request_context(

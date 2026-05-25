@@ -39,8 +39,13 @@ def mask_name(value: str) -> str:
 
 
 def _mask(key: str, value: Any) -> Any:
+    """키 기반 마스킹 + 중첩 dict/list 재귀(도구 args 등 구조체 PII/시크릿 보호)."""
     if key.lower() in _BLOCK_KEYS:
         return "[REDACTED]"
+    if isinstance(value, dict):
+        return {k: _mask(k, v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mask(key, item) for item in value]
     if key in _PHONE_KEYS and isinstance(value, str):
         return mask_phone(value)
     if key in _NAME_KEYS and isinstance(value, str):

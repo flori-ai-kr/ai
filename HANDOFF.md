@@ -4,17 +4,17 @@
 
 ## 현재 상태 (2026-05-25)
 
-**Phase 1 — SPEC-AI-001(Foundation) 구현 완료. PR(→ dev) 진행.**
+**Phase 1 — SPEC-AI-001 머지 완료. SPEC-AI-002(A 데이터 분석) 구현 완료, PR(→ dev) 진행.**
 
 ### 완료
-- DESIGN 승인됨(2026-05-25). README는 영어로 전환(공개 레포 정책).
-- 부트스트랩: MoAI 초기화, 컨벤션 문서, GitHub `flori-ai-kr/ai`(public, dev 디폴트), 라벨·About·CI.
-- **SPEC-AI-001 구현** (`feature/SPEC-AI-001`): uv 프로젝트(py3.12)·ruff·pytest, FastAPI 앱(`/health`, 보호 `/whoami`), 인증 의존성(`/me` 인트로스펙션+패스스루), 백엔드 클라이언트(httpx, JWT 패스스루, 재시도/에러매핑), Redis 세션(session_id+턴), 사용량 캡, 감사 로깅(PII 마스킹), LiteLLM ChatOpenAI 팩토리, LangGraph 스켈레톤, docker-compose+Dockerfile+.env.example+litellm-config.
-- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 28 passed** · `docker compose config` 유효.
+- DESIGN 승인. 부트스트랩 + GitHub `flori-ai-kr/ai`(public, dev 디폴트, 라벨·About·CI). README 영어.
+- **SPEC-AI-001(Foundation)** — dev 머지 완료(PR #1). FastAPI 앱, 인증(`/me` 패스스루), 백엔드 클라이언트, Redis 세션, 사용량 캡, 감사 로깅, LiteLLM 팩토리, LangGraph 스켈레톤, 로컬 스택. CI 그린. (신규 org Actions 최초 등록 지연 → 새 이벤트로 정상화됨)
+- **SPEC-AI-002(A 데이터 분석)** (`feature/SPEC-AI-002`): 읽기 도구 레지스트리(`get_month_dashboard`/`get_today_dashboard`/`list_sales`/`list_customers`, JWT 패스스루), ReAct 도구콜 루프(iteration cap·self-correction·감사 로깅), 분석가 시스템 프롬프트(입력 펜스), `POST /chat`(인증+세션+에이전트). 전부 읽기전용.
+- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 41 passed**.
 
 ### 다음 할 일
-1. `feature/SPEC-AI-001` → **dev PR** (`/feature-finalize`). CI 통과 확인 후 머지.
-2. 머지 후 → SPEC-AI-002(A 데이터 분석, 읽기전용 도구콜 루프) 착수.
+1. `feature/SPEC-AI-002` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
+2. 머지 후 → SPEC-AI-003(B OCR→예약, 비전 + human-in-loop 쓰기) 착수.
 
 ### 블로커
 - 없음.
