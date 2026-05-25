@@ -205,9 +205,10 @@ general_settings:
 - **STT/TTS = AWS Transcribe/Polly**(확정). Port 추상화(`app/voice/ports.py`) — `SttProvider`/`TtsProvider`. 어댑터 `app/voice/aws.py`(`TranscribeStt` 스트리밍, `PollyTts` boto3, voice=Seoyeon, ko-KR). 실 AWS 호출은 인프라에서 검증.
 - C2 실시간: 전송계층을 WS/WebRTC로 교체. 부분 인식·바지인 고려. 동일 파이프라인 재사용.
 
-### 9.4 D — 에이전트 확장 (SPEC-AI-006)
-- A·B·C 도구를 묶은 다단계 에이전트 + 선제 제안(예: "내일 예약 3건 — 리마인더 보낼까요?"). 선제 제안도 쓰기는 확인 게이팅.
-- 복잡도 상승 시 Langfuse 트레이싱 도입.
+### 9.4 D — 에이전트 확장 (SPEC-AI-006) ✅ 구현
+- **선제 제안** `GET /agent/proactive`: 읽기 도구(`/dashboard/today`·`/reservations/upcoming`)로 컨텍스트 수집 → LLM이 `Suggestion{title, detail}` 목록 생성(`app/agents/proactive.py`). 읽기전용·fail-open. 컨텍스트는 데이터로 펜스 격리.
+- **관측성** `app/observability/tracing.py`: `@observe` seam — Langfuse env 설정 시 트레이싱, 미설정 시 no-op 패스스루(fail-open). `run_agent`·proactive에 적용.
+- 선제 제안도 쓰기는 자동 실행하지 않음 — 실행은 B의 confirm(human-in-loop) 경유.
 
 ## 10. 시퀀싱 (ROADMAP 연계)
 

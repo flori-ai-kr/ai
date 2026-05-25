@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     polly_voice: str = "Seoyeon"  # 한국어 음성
     transcribe_language: str = "ko-KR"
 
+    # 관측성 (D — Langfuse, v1 선택. 미설정 시 no-op)
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
