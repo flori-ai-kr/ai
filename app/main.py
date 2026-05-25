@@ -11,9 +11,10 @@ from fastapi import FastAPI
 from redis.asyncio import from_url
 
 from app.agents.llm_client import build_chat_model
-from app.api import chat, health, whoami
+from app.api import chat, confirm, health, ocr, whoami
 from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
+from app.confirm.store import PendingWriteStore
 from app.core.config import get_settings
 from app.core.usage import UsageLimiter
 from app.session.store import SessionStore
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.authenticator = Authenticator(backend, cache_ttl_seconds=settings.me_cache_ttl_seconds)
     app.state.usage_limiter = UsageLimiter(redis, cap=settings.usage_cap_per_day)
     app.state.session_store = SessionStore(redis, ttl_seconds=settings.session_ttl_seconds)
+    app.state.pending_store = PendingWriteStore(redis, ttl_seconds=settings.pending_ttl_seconds)
     app.state.chat_model = build_chat_model(settings)
 
     try:
@@ -45,6 +47,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(whoami.router)
     app.include_router(chat.router)
+    app.include_router(ocr.router)
+    app.include_router(confirm.router)
     return app
 
 

@@ -8,6 +8,7 @@ from langchain_core.language_models import BaseChatModel
 
 from app.backend.auth import Authenticator, AuthError, RequestContext
 from app.backend.client import BackendClient
+from app.confirm.store import PendingWriteStore
 from app.core.usage import UsageCapExceeded, UsageLimiter
 from app.session.store import SessionStore
 
@@ -40,6 +41,10 @@ def get_backend_client(request: Request) -> BackendClient:
 
 def get_chat_model(request: Request) -> BaseChatModel:
     return request.app.state.chat_model
+
+
+def get_pending_store(request: Request) -> PendingWriteStore:
+    return request.app.state.pending_store
 
 
 async def get_request_context(

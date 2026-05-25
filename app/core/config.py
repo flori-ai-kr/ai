@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 30.0
     usage_cap_per_day: int = 500
     session_ttl_seconds: int = 86400
+    pending_ttl_seconds: int = 600  # 쓰기 제안(확인 카드) 유효시간
 
 
 @lru_cache
