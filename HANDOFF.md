@@ -4,22 +4,28 @@
 
 ## 현재 상태 (2026-05-25)
 
-**Phase 1 — AI-001·002·003 머지 완료. SPEC-AI-004(C1 음성) 구현 완료, PR(→ dev) 진행.**
+**Phase 1 — AI-001·002·003·004 머지 완료. SPEC-AI-006(D 에이전트 확장) 구현 완료, PR(→ dev) 진행.**
 
-### 완료
+### 완료 (5/6 SPEC 머지, AI-005만 보류)
 - DESIGN 승인. 부트스트랩 + GitHub `flori-ai-kr/ai`(public, dev 디폴트, 라벨·About·CI). README 영어.
 - **AI-001(Foundation)** — 머지(PR #1). FastAPI, 인증(`/me` 패스스루), 백엔드 클라이언트, Redis 세션, 캡, 감사, LiteLLM, LangGraph 스켈레톤, 로컬 스택.
 - **AI-002(A 데이터 분석)** — 머지(PR #2). 읽기 도구 레지스트리 + ReAct 루프 + `POST /chat`.
-- **AI-003(B OCR→예약)** — 머지(PR #3). 비전 추출 → ConfirmationCard(human-in-loop) → `POST /confirm` → `POST /reservations`. 첫 쓰기 경로.
-- **AI-004(C1 음성)** (`feature/SPEC-AI-004`): STT/TTS Port(`app/voice/ports.py`) + AWS 어댑터(`app/voice/aws.py`: Transcribe 스트리밍, Polly Seoyeon) + `run_voice_turn`(STT→A 에이전트→TTS) + `POST /voice/turn`(audio base64). STT/TTS = **AWS Transcribe/Polly 확정**.
-- 검증: `ruff` clean · `format` clean · **pytest 77 passed**.
+- **AI-003(B OCR→예약)** — 머지(PR #3). 비전 추출 → ConfirmationCard(human-in-loop) → `POST /confirm` → `POST /reservations`.
+- **AI-004(C1 음성)** — 머지(PR #4). STT/TTS Port + AWS 어댑터(Transcribe/Polly) + `run_voice_turn` + `POST /voice/turn`.
+- **AI-006(D 에이전트 확장)** (`feature/SPEC-AI-006`): 선제 제안 `GET /agent/proactive`(읽기 컨텍스트→LLM 제안, fail-open) + 관측성 seam(`app/observability/tracing.py` `@observe` no-op, run_agent/proactive 적용).
+- 검증: `ruff` clean · `format` clean · **pytest 90 passed**.
 
 ### 다음 할 일
-1. `feature/SPEC-AI-004` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
-2. 머지 후 → SPEC-AI-005(C2 실시간 음성: WS/WebRTC 전송으로 교체, 동일 파이프라인 재사용) 착수.
+1. `feature/SPEC-AI-006` → **dev PR**(`/feature-finalize`) → CI 그린 → 머지.
+2. 머지 후 남은 것: **SPEC-AI-005(C2 실시간 음성)** — 사용자 선택으로 보류. 재개 시 WS 전송으로 `run_voice_turn` 스트리밍 래핑(WebRTC/TURN은 인프라 범위 밖).
 
 ### 블로커
 - 없음.
+
+### 백로그
+- 인-챗 예약 제안 도구(propose_reservation)를 ReAct 루프에 통합(현재 B는 /ocr+/confirm).
+- 세션 동시쓰기 store-레벨 원자화, 인증 캐시 Redis 이전, 감사 durable 저장, 백엔드 응답 Pydantic 검증.
+- 실 Langfuse 연동(env), 실 AWS Transcribe/Polly 인프라 검증.
 
 ### 백로그(후속 SPEC 권고)
 - 에이전트: 세션 히스토리 길이 슬라이싱, 백엔드 응답 Pydantic 검증(LLM 출력 안전), REGISTRY name 키 중복 정리.

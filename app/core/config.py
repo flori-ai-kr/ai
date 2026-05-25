@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +33,11 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-2"
     polly_voice: str = "Seoyeon"  # 한국어 음성
     transcribe_language: str = "ko-KR"
+
+    # 관측성 (D — Langfuse, v1 선택. 미설정 시 no-op)
+    langfuse_public_key: str = ""
+    langfuse_secret_key: SecretStr = SecretStr("")
+    langfuse_host: str = ""
 
 
 @lru_cache

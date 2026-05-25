@@ -16,6 +16,7 @@ from app.agents.prompts import build_system_prompt, fence_user_input
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
 from app.core.audit import audit_event
+from app.observability.tracing import observe
 from app.session.models import Turn
 from app.tools.registry import dispatch, tool_schemas
 
@@ -39,6 +40,7 @@ def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
     return messages
 
 
+@observe(name="run_agent")
 async def run_agent(
     *,
     model: BaseChatModel,
