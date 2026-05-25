@@ -3,9 +3,10 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.api.deps import get_backend_client, get_pending_store, get_request_context
+from app.api.validators import SafeId
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient, BackendError
 from app.confirm.executor import execute
@@ -16,7 +17,7 @@ router = APIRouter()
 
 
 class ConfirmRequest(BaseModel):
-    proposal_id: str = Field(..., max_length=64)
+    proposal_id: SafeId
 
 
 class ConfirmResponse(BaseModel):

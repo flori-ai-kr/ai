@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.language_models import BaseChatModel
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.api.deps import (
     get_backend_client,
@@ -19,19 +19,32 @@ from app.api.deps import (
     get_stt,
     get_tts,
 )
+from app.api.validators import SafeId
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
+from app.core.audit import audit_event
 from app.session.store import SessionStore
-from app.voice.pipeline import run_voice_turn
-from app.voice.ports import SttProvider, TtsProvider
+from app.voice.pipeline import EmptyTranscriptError, run_voice_turn
+from app.voice.ports import SttProvider, TtsProvider, VoiceProviderError
 
 router = APIRouter()
 
+_MAX_AUDIO_BYTES = 10 * 1024 * 1024  # 디코딩 후 상한 (메모리/비용 DoS 방지)
+# Transcribe 스트리밍 호환 포맷만 허용.
+_ALLOWED_CONTENT_TYPES = frozenset({"audio/wav", "audio/pcm", "audio/ogg", "audio/x-wav"})
+
 
 class VoiceTurnRequest(BaseModel):
-    audio_base64: str = Field(..., max_length=20_000_000)  # ~15MB raw
-    content_type: str = Field("audio/wav", max_length=100)
-    session_id: str | None = Field(None, max_length=64)
+    audio_base64: str = Field(..., max_length=20_000_000)  # ~15MB base64
+    content_type: str = Field("audio/wav", max_length=64)
+    session_id: SafeId | None = None
+
+    @field_validator("content_type")
+    @classmethod
+    def _check_content_type(cls, v: str) -> str:
+        if v not in _ALLOWED_CONTENT_TYPES:
+            raise ValueError(f"content_type must be one of {sorted(_ALLOWED_CONTENT_TYPES)}")
+        return v
 
 
 class VoiceTurnResponse(BaseModel):
@@ -57,18 +70,32 @@ async def voice_turn(
     except (binascii.Error, ValueError):
         raise HTTPException(status_code=422, detail="audio_base64 must be valid base64") from None
 
-    result: dict[str, Any] = await run_voice_turn(
-        stt=stt,
-        tts=tts,
-        model=model,
-        client=backend,
-        ctx=ctx,
-        audio=audio,
-        content_type=req.content_type,
-        store=store,
-        session_id=req.session_id,
-    )
+    if len(audio) > _MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="audio payload too large")
 
+    try:
+        result: dict[str, Any] = await run_voice_turn(
+            stt=stt,
+            tts=tts,
+            model=model,
+            client=backend,
+            ctx=ctx,
+            audio=audio,
+            content_type=req.content_type,
+            store=store,
+            session_id=req.session_id,
+        )
+    except EmptyTranscriptError:
+        raise HTTPException(status_code=422, detail="음성을 인식하지 못했어요. 다시 시도해 주세요.") from None
+    except PermissionError:
+        audit_event("session_access_denied", user_id=ctx.user_id, session_id=req.session_id)
+        raise HTTPException(status_code=403, detail="session access denied") from None
+    except VoiceProviderError:
+        audit_event("voice_provider_error", user_id=ctx.user_id, session_id=req.session_id)
+        raise HTTPException(status_code=502, detail="음성 처리 중 오류가 발생했어요.") from None
+
+    # transcript 본문은 로깅하지 않음(PII) — 사실만 기록.
+    audit_event("voice_turn", user_id=ctx.user_id, session_id=result["session_id"])
     return VoiceTurnResponse(
         transcript=result["transcript"],
         reply=result["reply"],

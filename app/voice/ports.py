@@ -3,6 +3,10 @@
 from typing import Protocol, runtime_checkable
 
 
+class VoiceProviderError(Exception):
+    """STT/TTS 프로바이더 호출 실패. 내부(AWS) 디테일은 노출하지 않는다."""
+
+
 @runtime_checkable
 class SttProvider(Protocol):
     async def transcribe(self, audio: bytes, *, content_type: str) -> str:

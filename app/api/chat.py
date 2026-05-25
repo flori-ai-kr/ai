@@ -17,6 +17,7 @@ from app.api.deps import (
     get_request_context,
     get_session_store,
 )
+from app.api.validators import SafeId
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
 from app.core.audit import audit_event
@@ -30,7 +31,7 @@ _AGENT_ERROR_REPLY = "죄송해요, 분석 중 오류가 발생했어요. 잠시
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
-    session_id: str | None = Field(None, max_length=64)
+    session_id: SafeId | None = None
 
 
 class ChatResponse(BaseModel):
