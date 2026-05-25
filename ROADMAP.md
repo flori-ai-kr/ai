@@ -9,7 +9,7 @@
 
 | 항목 | status | 비고 |
 |------|--------|------|
-| docs/DESIGN.md | DOING | 전체 아키텍처·보안 모델·도구 카탈로그·대화 세션·시퀀싱. **사용자 승인 게이트** — 승인 전 구현 착수 금지 |
+| docs/DESIGN.md | DONE | 전체 아키텍처·보안 모델·도구 카탈로그·대화 세션·시퀀싱. **사용자 승인 완료(2026-05-25)** |
 
 ## Phase 1 — 기반 & 기능 (시퀀싱)
 
@@ -17,7 +17,7 @@
 
 | SPEC | status | deps | 범위 |
 |------|--------|------|------|
-| SPEC-AI-001 | TODO | DESIGN 승인 | **Foundation**: FastAPI+LangGraph 스켈레톤, 유저 JWT 검증/전달 인증(`/me` 인트로스펙션 + 패스스루), 백엔드 REST 도구 클라이언트(httpx, 재시도/타임아웃), LiteLLM 연동(Claude Haiku 4.5), Redis 세션(session_id+턴 추상화), 로컬 docker-compose(ai-server+redis), `/health`, 유저별 사용량 캡 자리, AI 행위 감사 로깅, `.env.example`, pyproject(uv)·ruff·pytest |
+| SPEC-AI-001 | DONE | DESIGN 승인 | **Foundation**: FastAPI+LangGraph 스켈레톤, 유저 JWT 검증/전달 인증(`/me` 인트로스펙션 + 패스스루), 백엔드 REST 도구 클라이언트(httpx, 재시도/타임아웃), LiteLLM 연동(Claude Haiku 4.5), Redis 세션(session_id+턴 추상화), 로컬 docker-compose(ai-server+redis), `/health`, 유저별 사용량 캡 자리, AI 행위 감사 로깅, `.env.example`, pyproject(uv)·ruff·pytest. **28 tests 통과** |
 | SPEC-AI-002 | TODO | 001 | **A 데이터 분석 (읽기전용)**: 통계/대시보드 읽기 도구(`/dashboard/month`, `/dashboard/today`, `/sales`, `/customers` 등 래퍼) + 도구콜 루프 + "이번 달 매출 왜 떨어졌어?" 류 질의에 LLM 해설. 쓰기 없음 — 도구콜 루프 검증의 기준점 |
 | SPEC-AI-003 | TODO | 001, 002 | **B OCR→예약**: 이미지(카톡 스크린샷) 입력 → 비전 LLM(Haiku 4.5)로 고객·날짜·시간·품목·금액 추출 → 예약 후보 DTO → **확인 카드(human-in-loop)** → 확인 시 `find-or-create` 고객 + `POST /reservations`. 추출 검증·날짜 파싱·중복 방지 |
 | SPEC-AI-004 | TODO | 001, 003 | **C1 음성 푸시투토크**: STT(확정 예정) → 텍스트 → 에이전트 도구 호출 → 응답 텍스트 → TTS. HTTP/SSE 전송. 대화 세션 추상화 위에서 동작. STT/TTS 프로바이더 추상화(교체 가능) |

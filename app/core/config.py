@@ -1,0 +1,34 @@
+"""환경 변수 기반 설정. 평문 시크릿은 코드에 두지 않고 env로만 주입."""
+
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """필드명이 곧 환경변수명(대소문자 무시). 예: ``llm_model`` ← ``LLM_MODEL``."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # LLM (LiteLLM 프록시 경유)
+    litellm_base_url: str = "http://localhost:4000"
+    litellm_api_key: str = ""
+    llm_model: str = "claude-haiku-4-5"
+
+    # 백엔드 (Spring REST — 도구 대상)
+    backend_base_url: str = "http://localhost:8080"
+
+    # Redis (세션·캡)
+    redis_url: str = "redis://localhost:6379/0"
+
+    # 인증 / 캡 / 타임아웃 / 세션
+    me_cache_ttl_seconds: int = 60
+    request_timeout_seconds: float = 30.0
+    usage_cap_per_day: int = 500
+    session_ttl_seconds: int = 86400
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """프로세스 단위 싱글톤 설정."""
+    return Settings()

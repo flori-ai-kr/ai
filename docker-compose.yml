@@ -1,0 +1,36 @@
+# 로컬 개발용 스택 — ai-server + redis.
+# LiteLLM은 호스트/외부 prod 사용(LITELLM_BASE_URL). 인프라/배포는 범위 밖.
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: flori-ai-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  ai-server:
+    build: .
+    container_name: flori-ai-server
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-http://host.docker.internal:4000}
+      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://host.docker.internal:8080}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024M

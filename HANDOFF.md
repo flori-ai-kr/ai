@@ -4,23 +4,23 @@
 
 ## 현재 상태 (2026-05-25)
 
-**Phase 0 (설계) 진행 중 — 부트스트랩 완료, DESIGN 승인 대기.**
+**Phase 1 — SPEC-AI-001(Foundation) 구현 완료. PR(→ dev) 진행.**
 
 ### 완료
-- MoAI-ADK 초기화 (`moai init`, v2.14.0, mode=tdd, language=python). git 전략=personal, 통합 브랜치=dev.
-- 컨벤션 문서: `CLAUDE.md`(hazel 컨벤션 + MoAI 통합), `ROADMAP.md`(AI-001~006 시퀀싱), 본 `HANDOFF.md`, `README.md`.
-- MoAI 운영 매뉴얼 원본 백업: `CLAUDE.md.moai-template`.
-- `docs/DESIGN.md` 초안 작성.
-- GitHub: `flori-ai-kr/ai` (public) 생성, `main`/`dev` 브랜치, `dev` 디폴트. 라벨·About·README·CI(.github) 세팅.
-- CI: `kikoai/app/.github` 복제(deploy-dev.yml 제외). `ci.yml`만 Python(uv+ruff+pytest)으로 조정.
+- DESIGN 승인됨(2026-05-25). README는 영어로 전환(공개 레포 정책).
+- 부트스트랩: MoAI 초기화, 컨벤션 문서, GitHub `flori-ai-kr/ai`(public, dev 디폴트), 라벨·About·CI.
+- **SPEC-AI-001 구현** (`feature/SPEC-AI-001`): uv 프로젝트(py3.12)·ruff·pytest, FastAPI 앱(`/health`, 보호 `/whoami`), 인증 의존성(`/me` 인트로스펙션+패스스루), 백엔드 클라이언트(httpx, JWT 패스스루, 재시도/에러매핑), Redis 세션(session_id+턴), 사용량 캡, 감사 로깅(PII 마스킹), LiteLLM ChatOpenAI 팩토리, LangGraph 스켈레톤, docker-compose+Dockerfile+.env.example+litellm-config.
+- 검증: `ruff check` clean · `ruff format --check` clean · **pytest 28 passed** · `docker compose config` 유효.
 
 ### 다음 할 일
-1. **사용자 DESIGN 승인 대기** — 승인 전 구현 착수 금지.
-2. 승인 후 → SPEC-AI-001(Foundation) 착수: `.moai/specs/SPEC-AI-001/spec.md` 작성 → TDD → `uv run ruff check . && uv run pytest` 통과 → 커밋 → ROADMAP DONE.
+1. `feature/SPEC-AI-001` → **dev PR** (`/feature-finalize`). CI 통과 확인 후 머지.
+2. 머지 후 → SPEC-AI-002(A 데이터 분석, 읽기전용 도구콜 루프) 착수.
 
 ### 블로커
 - 없음.
 
 ### 메모
-- 백엔드 REST 표면은 `~/Desktop/hazel-server`에 95개 엔드포인트 존재(JWT `Authorization: Bearer`, `TenantContext`로 userId 격리). 도구 카탈로그는 DESIGN §도구 카탈로그 참조.
-- 시크릿(LiteLLM master key, Bedrock 자격 등)은 env로만. 인프라/배포는 범위 밖.
+- 백엔드 REST 표면은 `~/Desktop/hazel-server`에 95개 엔드포인트(JWT `Authorization: Bearer`, `TenantContext` userId 격리). 도구 카탈로그는 DESIGN §6.
+- 시크릿(LiteLLM master key, Bedrock 자격)은 env로만. 인프라/배포는 범위 밖.
+- CI는 첫 PR부터 정식 동작(pyproject.toml 존재 → graceful skip 해제). `commit-labeler`는 레포 시크릿 `PERSONAL_TOKEN` 필요.
+- §14 열린 질문(캡 정책/세션 식별/ConfirmationCard 계약 등)은 기능 SPEC에서 구체화 — 현재 합리적 기본값으로 seam 구현.
