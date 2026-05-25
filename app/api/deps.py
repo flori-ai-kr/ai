@@ -11,6 +11,7 @@ from app.backend.client import BackendClient
 from app.confirm.store import PendingWriteStore
 from app.core.usage import UsageCapExceeded, UsageLimiter
 from app.session.store import SessionStore
+from app.voice.ports import SttProvider, TtsProvider
 
 _BEARER_PREFIX = "Bearer "
 _KST = ZoneInfo("Asia/Seoul")
@@ -45,6 +46,14 @@ def get_chat_model(request: Request) -> BaseChatModel:
 
 def get_pending_store(request: Request) -> PendingWriteStore:
     return request.app.state.pending_store
+
+
+def get_stt(request: Request) -> SttProvider:
+    return request.app.state.stt
+
+
+def get_tts(request: Request) -> TtsProvider:
+    return request.app.state.tts
 
 
 async def get_request_context(

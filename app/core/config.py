@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 86400
     pending_ttl_seconds: int = 600  # 쓰기 제안(확인 카드) 유효시간
 
+    # 음성 (C — AWS Transcribe/Polly)
+    aws_region: str = "ap-northeast-2"
+    polly_voice: str = "Seoyeon"  # 한국어 음성
+    transcribe_language: str = "ko-KR"
+
 
 @lru_cache
 def get_settings() -> Settings:
