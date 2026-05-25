@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,7 +36,7 @@ class Settings(BaseSettings):
 
     # 관측성 (D — Langfuse, v1 선택. 미설정 시 no-op)
     langfuse_public_key: str = ""
-    langfuse_secret_key: str = ""
+    langfuse_secret_key: SecretStr = SecretStr("")
     langfuse_host: str = ""
 
 

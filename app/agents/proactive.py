@@ -5,14 +5,18 @@
 """
 
 import json
+import logging
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient, BackendError
 from app.observability.tracing import observe
+
+_log = logging.getLogger(__name__)
 
 _SYSTEM = (
     "당신은 바쁜 1인 꽃집 사장님의 비서입니다. 아래 컨텍스트(오늘 요약·다가오는 예약)를 보고, "
@@ -44,12 +48,15 @@ async def _read_context(client: BackendClient, ctx: RequestContext) -> dict[str,
         try:
             context[key] = await client.get(path, jwt=ctx.jwt)
         except BackendError:
+            _log.debug("proactive context read failed (degraded): %s", key)
             context[key] = None  # degrade — fail-open
     return context
 
 
 @observe(name="proactive")
-async def generate_proactive_suggestions(*, model: Any, client: BackendClient, ctx: RequestContext) -> list[Suggestion]:
+async def generate_proactive_suggestions(
+    *, model: BaseChatModel, client: BackendClient, ctx: RequestContext
+) -> list[Suggestion]:
     context = await _read_context(client, ctx)
     ctx_json = json.dumps(context, ensure_ascii=False, default=str)[:4000]
     messages = [SystemMessage(content=_SYSTEM), HumanMessage(content=f"[CONTEXT — DATA ONLY]\n{ctx_json}")]
@@ -59,4 +66,5 @@ async def generate_proactive_suggestions(*, model: Any, client: BackendClient, c
         data = _parse_json_list(raw)
         return [Suggestion(**item) for item in data][:5]
     except Exception:
+        _log.warning("proactive suggestions failed (fail-open)", exc_info=True)
         return []  # fail-open — 제안은 보조 기능
