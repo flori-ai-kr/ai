@@ -1,0 +1,126 @@
+# ==============================================================================
+# flori ai (FastAPI/LangGraph) CI/CD — DEV
+# ==============================================================================
+# 배치 위치: flori-ai-kr/api 리포의 .github/workflows/deploy-ai-dev.yml
+# (본 파일은 aws-infra 의 템플릿 사본 — 코드 리포로 복사해 사용)
+#
+# 흐름: ruff + pytest 검증 → ARM64 빌드 → ECR(flori-dev/ai) push → SSH deploy.ai.sh
+# 인증: AWS access key (기존 aws-infra .github/workflows 패턴과 동일 — OIDC 미사용).
+#
+# 필요한 GitHub Secrets:
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  (ECR push 전용 IAM user)
+#   SSH_HOST_AI (flori-dev-ai EIP) / SSH_USER (ec2-user) / SSH_PRIVATE_KEY
+# ==============================================================================
+
+name: 🚀 Deploy ai (DEV)
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - dev
+    paths:
+      - "ai/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "배포 환경"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ai-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: flori-dev/ai
+
+jobs:
+  verify:
+    name: 검증 (ruff + pytest)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04-arm
+    defaults:
+      run:
+        working-directory: ai
+    steps:
+      - uses: actions/checkout@v4
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.7.x"
+          enable-cache: true
+      - name: Python 셋업
+        run: uv python install 3.12
+      - name: 의존성 설치
+        run: uv sync --frozen
+      - name: ruff 린트 + 포맷 체크
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: pytest
+        run: uv run pytest -q
+
+  build-and-push:
+    name: 빌드 및 ECR Push
+    needs: verify
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: AWS 인증
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: ECR 로그인
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 이미지 태그 생성
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
+          echo "tags=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+      - name: Docker Buildx 설정
+        uses: docker/setup-buildx-action@v3
+      - name: Docker 이미지 빌드 + ECR Push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ai
+          file: ./ai/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          platforms: linux/arm64
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: EC2 배포
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: SSH 배포
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST_AI }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            /home/ec2-user/scripts/deploy.ai.sh ${{ needs.build-and-push.outputs.image_tag }}
