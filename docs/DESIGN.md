@@ -2,6 +2,8 @@
 
 > Flori 꽃집 SaaS 프리미엄 AI 서비스 설계. 2026-05-25 작성. **사용자 승인 게이트** — 본 문서 승인 후 구현(SPEC-AI-001) 착수.
 > 백엔드 REST 표면은 `~/Desktop/hazel-server`(Spring/Kotlin) 기준. 구조 참고(복붙 금지): `~/Desktop/kikoai/ai`.
+>
+> 📐 **as-built 상세**: [ARCHITECTURE.md](ARCHITECTURE.md)(전체 통합) · [features/](features/README.md)(A·B·C·D 기능별 플로우/스택). 본 문서는 "왜 이렇게 설계했나(결정·근거)"의 SSOT.
 
 ## 1. 배경 & 미션
 

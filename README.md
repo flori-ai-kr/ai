@@ -7,7 +7,9 @@ An AI assistant for the busy solo florist. It holds **no direct database access*
 LLM and Vision run through a single multimodal model — **LiteLLM proxy → AWS Bedrock Claude Haiku 4.5**.
 
 Docs:
-- [docs/DESIGN.md](docs/DESIGN.md) — architecture, security model, tool catalog, conversation session (SSOT, Korean)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — as-built architecture: topology, endpoints, layers, security model, tech stack (Korean)
+- [docs/features/](docs/features/README.md) — per-feature architecture & flow: A(data analysis) · B(OCR→reservation) · C(voice) · D(agent) (Korean)
+- [docs/DESIGN.md](docs/DESIGN.md) — design decisions, security model, tool catalog, conversation session (SSOT, Korean)
 - [ROADMAP.md](ROADMAP.md) — SPEC list, order, status (Korean)
 - [HANDOFF.md](HANDOFF.md) — last session state, next steps (Korean)
 - [CLAUDE.md](CLAUDE.md) — autonomous execution protocol, stack, security checklist (Korean)
