@@ -56,6 +56,8 @@ uv run pytest                                        # tests
 docker compose up -d                                 # local stack (ai-server + redis)
 ```
 
+Shortcuts via `Makefile` (run `make` to list): `make dev` (run), `make test`, `make lint`, `make up` (local Redis), `make down`.
+
 ## Authentication
 
 The AI server never issues or signature-verifies a JWT. The client (app) obtains a user JWT from the backend and passes it to the AI server, which **forwards it as-is** on backend REST calls. Isolation and gating are guaranteed by Spring. See [docs/DESIGN.md](docs/DESIGN.md) §5 (Security model).
