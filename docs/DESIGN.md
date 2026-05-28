@@ -51,6 +51,69 @@ flowchart LR
 
 Python 3.12+ / uv / FastAPI + uvicorn / LangGraph(StateGraph·ReAct) / LiteLLM proxy → Bedrock Claude Haiku 4.5 / `langchain-openai`(OpenAI 호환) / Pydantic v2 / httpx(async) / Redis / Langfuse(v1 선택) / pytest · ruff.
 
+### 3.1 기술 선정 근거 (탈락 후보)
+
+이 서비스의 도메인 맥락 = "백엔드 DB 비접근, JWT 패스스루, human-in-loop 쓰기, 1인 꽃집 비용 민감". 아래는 핵심 선택의 근거와 탈락 후보다.
+
+#### 에이전트 오케스트레이션 — 직접 구현 ReAct 루프
+
+LangGraph는 골격으로 두되, A/B/C/D 실 경로는 `langchain-openai` `bind_tools` + `langchain_core` 메시지로 직접 구현한 ReAct 루프를 쓴다. iteration cap·토큰 버짓·감사 훅을 우리가 완전히 통제해야 하고, 쓰기 게이팅(is_write 차단)을 루프 내부에 강제해야 하기 때문이다.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| LangGraph StateGraph 전면 채택 | 단순 도구콜 루프에 그래프 빌드 오버헤드·디버깅 비용 과함. 골격만 유지 |
+| LangChain AgentExecutor | 내부 동작 불투명 — iteration cap·감사·쓰기 차단을 끼워넣기 어려움 |
+| OpenAI Assistants API | 벤더 락인. LiteLLM→Bedrock 경유 정책과 충돌, 상태를 외부에 위임 |
+
+#### LLM 게이트웨이 — LiteLLM 프록시 → Bedrock Claude Haiku 4.5
+
+모든 LLM·Vision 호출을 단일 프록시·단일 모델로 통일. OpenAI 호환 인터페이스라 클라이언트 교체 비용이 낮고, 모델 라우팅·키 관리·비용 통제를 프록시 한 곳에서 한다. B의 OCR도 동일 멀티모달 모델.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| Bedrock SDK 직접 호출 | 모델 교체·키 관리가 코드에 박힘. OpenAI 호환 생태계(langchain-openai) 활용 불가 |
+| OpenAI/GPT 직접 | 사내 표준이 Bedrock. 비용·데이터 거버넌스(리전) 통제 어려움 |
+| 비전 전용 별도 모델 | 텍스트/비전 모델 이원화 → 프롬프트·비용·운영 복잡. Haiku 4.5 멀티모달로 단일화 |
+
+#### 인증 — JWT 패스스루 + `/me` 인트로스펙션
+
+AI 서버는 JWT를 서명검증·발급하지 않고, 받은 토큰을 백엔드에 그대로 전달한다. 멀티테넌시·구독 게이팅의 단일 진실원은 Spring이다 (§5.1 참조).
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| AI 서버가 JWT 서명검증 | 서명키를 AI에 두면 god-mode가 됨. 키 동기화·회전 부담, 보안 표면 확대 |
+| god-mode DB 커넥션 | 멀티테넌시 격리를 AI가 직접 책임져야 함 — 아키텍처 1순위 원칙 위반 |
+| 별도 IdP(Keycloak 등) | 1인 SaaS 규모에 과함. 백엔드 JWT 재활용이 단순 |
+
+#### 세션·상태 저장 — Redis
+
+대화 세션(session_id+턴), 사용량 캡 카운터, pending 쓰기 제안을 휘발성·TTL로 저장. AI는 영속 데이터를 소유하지 않는다.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| 인메모리(프로세스) | 다중 인스턴스·재시작에 세션 유실. C2 WebSocket sticky 세션 불가 |
+| AI 서버 자체 DB(Postgres) | 영속 데이터는 백엔드가 SSOT — AI가 DB를 갖는 순간 책임 경계가 흐려짐 |
+| 백엔드 DB 직접 | DB 비접근 원칙 위반 |
+
+#### 쓰기 실행 — human-in-loop 확인 카드
+
+쓰기(예약 생성 등)는 LLM이 직접 못 하고, `PendingWrite` 제안 → `ConfirmationCard` → `/confirm` 경유로만 실행 (§5.4 참조).
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| LLM 직접 쓰기 | 환각·프롬프트 인젝션이 곧 데이터 오염. 되돌리기 어려운 행위는 사람 확인 필수 |
+| 신뢰 기반 전면 자동화 | v1에서 위험. 신뢰 쌓인 뒤 저위험 쓰기부터 점진 완화 |
+
+#### STT / TTS — AWS Transcribe / Polly
+
+한국어 품질·AWS 생태계 일관성·Port 추상화로 교체 가능성 확보. Polly `Seoyeon`(neural), Transcribe `ko-KR` 스트리밍.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| Naver Clova | 별도 벤더·키 관리. AWS(Bedrock)와 자격·리전 통합 이점 포기 |
+| OpenAI Whisper/TTS | 음성까지 OpenAI 의존 추가. Bedrock 표준과 어긋남 |
+| Google STT | AWS 외 벤더 추가. Port 추상화로 추후 교체는 가능하게만 |
+
 ## 4. 모듈 / 디렉토리 구조
 
 레이어: `api(전송) → graphs/agents(오케스트레이션) → tools(백엔드 래퍼) → core/infra(횡단)`. 도메인 기능(A/B/C/D)은 모듈 추가로 확장.
@@ -214,7 +277,7 @@ general_settings:
 
 ## 10. 시퀀싱 (ROADMAP 연계)
 
-`SPEC-AI-001`(Foundation) → `002`(A) → `003`(B) → `004`(C1) → `005`(C2) → `006`(D). 상세·인수기준은 `ROADMAP.md` + 각 `.moai/specs/<ID>/spec.md`.
+`SPEC-AI-001`(Foundation) → `002`(A) → `003`(B) → `004`(C1) → `005`(C2) → `006`(D). 상세·인수기준은 `ROADMAP.md` + 각 `docs/specs/<ID>.md`.
 
 ## 11. 테스트 / 품질
 

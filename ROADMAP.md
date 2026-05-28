@@ -27,7 +27,7 @@
 ## 진행 규칙
 - 한 세션은 SPEC을 **하나씩** 끝낸다(lint·테스트·커밋까지). 그 후 다음 TODO로.
 - 의존성 미충족 SPEC은 건너뛰지 않고, 충족된 가장 앞 SPEC을 택한다.
-- 모든 SPEC은 `.moai/specs/<SPEC-ID>/spec.md`에 인수기준을 먼저 적고 구현한다.
+- 모든 SPEC은 `docs/specs/<SPEC-ID>.md`에 인수기준을 먼저 적고 구현한다.
 - **DESIGN 승인 전에는 어떤 구현 SPEC도 착수하지 않는다.**
 
 ## 결정 보류 (DESIGN에서 확정 / 추후)

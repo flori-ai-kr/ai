@@ -1,5 +1,7 @@
 # Flori AI — 아키텍처 (as-built)
 
+> 최종 업데이트: 2026-05-28
+
 실제 구현된 전체 그림. 설계 의도·결정·근거는 [DESIGN.md](DESIGN.md)(SSOT), 기능별 상세는 [features/](features/) 참조.
 
 > 한 줄 요약: 꽃집 사장님용 AI 서비스(FastAPI + LangGraph 기반). **백엔드 DB에 직접 접근하지 않고** 기존 Spring REST(`hazel-server`)를 도구로 호출하는 얇은 오케스트레이션 레이어. 유저 JWT를 백엔드에 그대로 전달해 멀티테넌시·구독 게이팅을 Spring이 강제한다.
@@ -112,10 +114,31 @@ flowchart LR
 | 테스트·린트 | pytest(97개) · ruff |
 
 ## 7. 기능별 상세
-- [features/A-data-analysis.md](features/A-data-analysis.md) — 데이터 분석
-- [features/B-ocr-reservation.md](features/B-ocr-reservation.md) — OCR→예약
-- [features/C-voice.md](features/C-voice.md) — 음성 (C1 푸시투토크 / C2 실시간)
-- [features/D-agent.md](features/D-agent.md) — 에이전트 확장 (선제 제안 + 관측성)
+- [features/26-05-26-A-data-analysis.md](features/26-05-26-A-data-analysis.md) — 데이터 분석
+- [features/26-05-26-B-ocr-reservation.md](features/26-05-26-B-ocr-reservation.md) — OCR→예약
+- [features/26-05-26-C-voice.md](features/26-05-26-C-voice.md) — 음성 (C1 푸시투토크 / C2 실시간)
+- [features/26-05-26-D-agent.md](features/26-05-26-D-agent.md) — 에이전트 확장 (선제 제안 + 관측성)
 
 ## 8. 범위 밖 (인프라 — 사용자 담당)
 LiteLLM 프록시 배포, Bedrock 모델 액세스, AWS Transcribe/Polly 자격, Langfuse 서버, EC2/ECR 배포. 코드는 env 주입만으로 동작하도록 준비됨(`.env.example`). 로컬은 `docker compose`(ai-server + redis) + LiteLLM 연결.
+
+## 9. 핵심 의존성 버전
+
+`pyproject.toml` 기준 최소 버전(`>=`). 정확한 잠금은 `uv.lock`.
+
+| 패키지 | 버전 | 용도 |
+|--------|------|------|
+| fastapi | 0.115+ | 웹 프레임워크 (HTTP + WebSocket) |
+| uvicorn[standard] | 0.32+ | ASGI 서버 |
+| httpx | 0.27+ | 백엔드 REST 비동기 클라이언트 (JWT 패스스루) |
+| pydantic | 2.9+ | 스키마·DTO·도구 인자 검증 |
+| pydantic-settings | 2.6+ | env 설정 로딩 |
+| redis | 5.2+ | 세션·사용량 캡·pending 쓰기 |
+| langgraph | 0.2.50+ | 에이전트 골격(StateGraph) |
+| langchain-openai | 0.2+ | LiteLLM 경유 `ChatOpenAI` + `bind_tools` |
+| boto3 | 1.35+ | AWS Polly(TTS) |
+| amazon-transcribe | 0.6+ | AWS Transcribe 스트리밍(STT) |
+| pytest / pytest-asyncio | 8.3+ / 0.24+ | 테스트 (asyncio_mode=auto) |
+| respx | 0.21+ | httpx mock (백엔드 호출 격리 테스트) |
+| fakeredis | 2.26+ | Redis mock 테스트 |
+| ruff | 0.8+ | 린트 + 포맷 (line-length 120, py312, `E/F/I/UP/B/ASYNC`) |
