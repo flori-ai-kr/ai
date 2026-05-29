@@ -27,7 +27,7 @@ env:
 jobs:
   build-and-push:
     name: 빌드 및 ECR Push
-    runs-on: ubuntu-latest # flori-ai-kr org 는 ARM 러너 미가용 → x64 + QEMU 로 arm64 크로스빌드
+    runs-on: ubuntu-24.04-arm # ARM64 네이티브 (QEMU 불필요, public 레포 무료 러너)
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
     steps:
@@ -63,8 +63,6 @@ jobs:
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
           echo "tags=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-      - name: QEMU 설정 (arm64 에뮬레이션)
-        uses: docker/setup-qemu-action@v3
       - name: Docker Buildx 설정
         uses: docker/setup-buildx-action@v3
       - name: Docker 이미지 빌드 및 Push
