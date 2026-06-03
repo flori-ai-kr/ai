@@ -8,29 +8,18 @@ from langchain_core.messages import AIMessage
 
 import app.api.voice as voice_mod
 from app.api.deps import (
-    get_authenticator,
     get_backend_client,
     get_chat_model,
+    get_request_context,
     get_session_store,
     get_stt,
     get_tts,
-    get_usage_limiter,
 )
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
 from app.main import create_app
 from app.session.store import SessionStore
 from app.voice.ports import VoiceProviderError
-
-
-class _FakeAuth:
-    async def authenticate(self, jwt: str) -> RequestContext:
-        return RequestContext(user_id="u1", jwt=jwt)
-
-
-class _FakeUsage:
-    async def enforce(self, user_id: str) -> int:
-        return 1
 
 
 class _Stt:
@@ -65,8 +54,7 @@ def _client(app):
 
 def _app(*, stt=None, tts=None, store=None):
     app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth()
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(user_id="u1", jwt="jwt")
     app.dependency_overrides[get_chat_model] = lambda: _Model()
     app.dependency_overrides[get_backend_client] = lambda: BackendClient("http://backend.test", timeout=5.0)
     app.dependency_overrides[get_session_store] = lambda: store or SessionStore(FakeAsyncRedis(), ttl_seconds=3600)

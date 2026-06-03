@@ -2,7 +2,7 @@ from app.core.config import Settings
 
 
 def test_settings_defaults():
-    s = Settings()
+    s = Settings(_env_file=None)  # .env 무시 — 순수 기본값 검증
     assert s.llm_model == "claude-haiku-4-5"
     assert s.litellm_base_url.startswith("http")
     assert s.backend_base_url.startswith("http")

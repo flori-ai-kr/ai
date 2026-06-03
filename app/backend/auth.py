@@ -56,9 +56,12 @@ class Authenticator:
             # 원인은 체인(from exc)으로만 보존하고, 메시지엔 내부 경로/상태를 노출하지 않는다.
             raise AuthError("auth introspection failed") from exc
 
-        user_id = me.get("id") if isinstance(me, dict) else None
-        if not user_id:
+        raw_id = me.get("id") if isinstance(me, dict) else None
+        # 백엔드 /me 는 id 를 정수(JSON number)로 줄 수 있다 → AI 서버 전역에서 str 로 정규화한다
+        # (Session/캡/감사 키가 모두 str user_id 를 전제). None/빈 값만 거부(0 도 유효 id로 취급).
+        if raw_id is None or raw_id == "":
             raise AuthError("/me response missing user id")
+        user_id = str(raw_id)
 
         self._cache[jwt] = (user_id, now + self._ttl)
         return RequestContext(user_id=user_id, jwt=jwt)

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # 백엔드 (Spring REST — 도구 대상)
     backend_base_url: str = "http://localhost:8080"
 
+    # 게이트웨이 신뢰 내부키. Spring 게이트웨이가 X-Internal-Key로 보내며, 이 값과 일치해야 한다.
+    internal_key: str = ""
+
     # Redis (세션·캡)
     redis_url: str = "redis://localhost:6379/0"
 

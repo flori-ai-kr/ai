@@ -1,10 +1,10 @@
-"""채팅 엔드포인트 (A 데이터 분석).
+"""채팅 엔드포인트 (A 데이터 분석) — 게이트웨이 뒤 stateless.
 
-인증 → 세션 get_or_create + 유저 턴 기록 → ReAct 에이전트 실행 → 어시스턴트 턴 기록 → 응답.
-session_id는 클라이언트가 주거나, 없으면 서버가 발급한다(소유자 검증은 세션 스토어가 강제).
+게이트웨이가 전체 대화 히스토리(messages)를 보낸다. ai-server는 세션을 소유하지 않는다.
+인증 → ReAct 에이전트 실행 → 응답(reply + 사용 모델). 영속/세션/캡은 게이트웨이가 소유.
 """
 
-import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.language_models import BaseChatModel
@@ -15,28 +15,33 @@ from app.api.deps import (
     get_backend_client,
     get_chat_model,
     get_request_context,
-    get_session_store,
+    get_settings,
 )
-from app.api.validators import SafeId
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
 from app.core.audit import audit_event
+from app.core.config import Settings
 from app.session.models import Turn
-from app.session.store import SessionStore
 
 router = APIRouter()
 
 _AGENT_ERROR_REPLY = "죄송해요, 분석 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요."
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., max_length=4000)
+
+
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=4000)
-    session_id: SafeId | None = None
+    # 게이트웨이가 보내는 전체 대화 히스토리(마지막 항목 = 이번 유저 발화). 길이 상한으로 컨텍스트 폭발 방어.
+    messages: list[ChatMessage] = Field(..., min_length=1, max_length=50)
+    model: str | None = None  # 게이트웨이 힌트(현재는 ai-server 설정 모델을 사용)
 
 
 class ChatResponse(BaseModel):
     reply: str
-    session_id: str
+    model: str
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -45,24 +50,17 @@ async def chat(
     ctx: RequestContext = Depends(get_request_context),
     model: BaseChatModel = Depends(get_chat_model),
     backend: BackendClient = Depends(get_backend_client),
-    store: SessionStore = Depends(get_session_store),
+    settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
-    session_id = req.session_id or uuid.uuid4().hex
-    try:
-        session = await store.get_or_create(session_id, ctx.user_id)
-    except PermissionError:
-        audit_event("session_access_denied", user_id=ctx.user_id, session_id=session_id)
-        raise HTTPException(status_code=403, detail="session access denied") from None
-
-    history = list(session.turns)  # 이번 메시지 이전까지의 맥락
-    await store.append_turn(session_id, Turn(role="user", text=req.message), user_id=ctx.user_id)
+    *prior, last = req.messages
+    if last.role != "user":
+        raise HTTPException(status_code=422, detail="last message must be from user")
+    history = [Turn(role=m.role, text=m.content) for m in prior]
 
     try:
-        reply = await run_agent(model=model, client=backend, ctx=ctx, user_text=req.message, history=history)
+        reply = await run_agent(model=model, client=backend, ctx=ctx, user_text=last.content, history=history)
     except Exception:
-        # 에이전트/LLM 실패 시에도 세션이 절반만 기록되지 않게 폴백 응답을 기록하고 반환.
-        audit_event("chat_agent_error", user_id=ctx.user_id, session_id=session_id)
+        audit_event("chat_agent_error", user_id=ctx.user_id)
         reply = _AGENT_ERROR_REPLY
 
-    await store.append_turn(session_id, Turn(role="assistant", text=reply), user_id=ctx.user_id)
-    return ChatResponse(reply=reply, session_id=session_id)
+    return ChatResponse(reply=reply, model=settings.llm_model)

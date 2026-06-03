@@ -1,23 +1,8 @@
 import httpx
 
-from app.api.deps import get_authenticator, get_usage_limiter
-from app.backend.auth import AuthError, RequestContext
+from app.api.deps import get_request_context
+from app.backend.auth import RequestContext
 from app.main import create_app
-
-
-class _FakeAuth:
-    def __init__(self, *, fail: bool = False) -> None:
-        self._fail = fail
-
-    async def authenticate(self, jwt: str) -> RequestContext:
-        if self._fail:
-            raise AuthError("bad")
-        return RequestContext(user_id="u1", jwt=jwt)
-
-
-class _FakeUsage:
-    async def enforce(self, user_id: str) -> int:
-        return 1
 
 
 def _client(app) -> httpx.AsyncClient:
@@ -31,29 +16,23 @@ async def test_health_is_public_and_ok():
     assert r.json() == {"status": "ok", "service": "flori-ai"}
 
 
-async def test_protected_route_rejects_missing_token():
-    app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth()
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
-    async with _client(app) as c:
+async def test_protected_route_rejects_missing_internal_key():
+    # 게이트웨이 신뢰 인증: X-Internal-Key 없으면 401.
+    async with _client(create_app()) as c:
         r = await c.get("/whoami")
     assert r.status_code == 401
 
 
-async def test_protected_route_accepts_valid_jwt():
+async def test_protected_route_rejects_wrong_internal_key():
+    async with _client(create_app()) as c:
+        r = await c.get("/whoami", headers={"X-Internal-Key": "wrong", "X-User-Id": "u1"})
+    assert r.status_code == 401
+
+
+async def test_protected_route_accepts_gateway_context():
     app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth()
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(user_id="u1", jwt="jwt")
     async with _client(app) as c:
-        r = await c.get("/whoami", headers={"Authorization": "Bearer good-jwt"})
+        r = await c.get("/whoami")
     assert r.status_code == 200
     assert r.json()["user_id"] == "u1"
-
-
-async def test_protected_route_rejects_invalid_jwt():
-    app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth(fail=True)
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
-    async with _client(app) as c:
-        r = await c.get("/whoami", headers={"Authorization": "Bearer bad"})
-    assert r.status_code == 401
