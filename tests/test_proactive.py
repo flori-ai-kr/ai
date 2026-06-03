@@ -22,6 +22,18 @@ class _Model:
         return AIMessage(content=self._content)
 
 
+class _CapturingModel(_Model):
+    """ainvoke 에 전달된 messages 를 보존해 프롬프트 구성을 검증한다."""
+
+    def __init__(self, content: str = _SUGGESTIONS_JSON) -> None:
+        super().__init__(content)
+        self.messages = None
+
+    async def ainvoke(self, messages):
+        self.messages = messages
+        return await super().ainvoke(messages)
+
+
 def _ctx() -> RequestContext:
     return RequestContext(user_id="u1", jwt="jwt-xyz")
 
@@ -64,6 +76,26 @@ async def test_proactive_fail_open_on_bad_model_output():
     client = BackendClient("http://backend.test", timeout=5.0)
     suggestions = await generate_proactive_suggestions(model=_Model(content="죄송해요"), client=client, ctx=_ctx())
     assert suggestions == []
+    await client.aclose()
+
+
+@respx.mock
+async def test_proactive_fences_backend_context_as_data():
+    """회귀: 백엔드 컨텍스트는 [CONTEXT — DATA ONLY] 펜스로 격리되고 시스템 프롬프트가 _SYSTEM 이어야 한다.
+
+    펜스 토큰이 깨지면 컨텍스트 안의 텍스트가 지시로 해석될 위험(인젝션) → 토큰을 고정한다.
+    """
+    from app.agents.proactive import _SYSTEM
+
+    _mock_backend_ok()
+    client = BackendClient("http://backend.test", timeout=5.0)
+    model = _CapturingModel()
+
+    await generate_proactive_suggestions(model=model, client=client, ctx=_ctx())
+
+    system_msg, human_msg = model.messages
+    assert system_msg.content == _SYSTEM
+    assert human_msg.content.startswith("[CONTEXT — DATA ONLY]\n")
     await client.aclose()
 
 
