@@ -3,7 +3,7 @@ import respx
 from langchain_core.messages import AIMessage
 
 from app.agents.proactive import generate_proactive_suggestions
-from app.api.deps import get_authenticator, get_backend_client, get_chat_model, get_usage_limiter
+from app.api.deps import get_backend_client, get_chat_model, get_request_context
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
 from app.main import create_app
@@ -68,16 +68,6 @@ async def test_proactive_fail_open_on_bad_model_output():
 
 
 # --- 엔드포인트 ---
-class _FakeAuth:
-    async def authenticate(self, jwt: str) -> RequestContext:
-        return RequestContext(user_id="u1", jwt=jwt)
-
-
-class _FakeUsage:
-    async def enforce(self, user_id: str) -> int:
-        return 1
-
-
 def _client(app):
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
@@ -87,24 +77,22 @@ async def test_proactive_endpoint_returns_suggestions():
     _mock_backend_ok()
     backend = BackendClient("http://backend.test", timeout=5.0)
     app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth()
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
+    app.dependency_overrides[get_request_context] = lambda: RequestContext(user_id="u1", jwt="jwt")
     app.dependency_overrides[get_chat_model] = lambda: _Model()
     app.dependency_overrides[get_backend_client] = lambda: backend
 
     async with _client(app) as c:
-        r = await c.get("/agent/proactive", headers={"Authorization": "Bearer jwt"})
+        r = await c.get("/agent/proactive")
     assert r.status_code == 200
     body = r.json()
     assert len(body["suggestions"]) == 2
     assert body["suggestions"][0]["title"] == "내일 예약 3건"
+    assert body["model"]  # 사용 모델 기록
     await backend.aclose()
 
 
 async def test_proactive_endpoint_requires_auth():
-    app = create_app()
-    app.dependency_overrides[get_authenticator] = lambda: _FakeAuth()
-    app.dependency_overrides[get_usage_limiter] = lambda: _FakeUsage()
-    async with _client(app) as c:
+    # 게이트웨이 내부키 없으면 401.
+    async with _client(create_app()) as c:
         r = await c.get("/agent/proactive")
     assert r.status_code == 401

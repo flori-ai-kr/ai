@@ -1,12 +1,10 @@
-"""OCR→예약 — 이미지에서 예약 후보를 추출해 확인 카드(human-in-loop)를 반환.
+"""OCR→예약 추출 — 이미지에서 예약 후보(draft)를 추출해 반환한다.
 
-여기서는 백엔드에 쓰지 않는다. 카드를 확인(POST /confirm)해야 실제 예약이 생성된다.
+게이트웨이 뒤 stateless: 여기서는 저장하지 않는다. 추출 결과(draft)만 돌려주고,
+게이트웨이가 제안(ai_write_proposal)으로 보관 → 사용자가 확인(/ai/confirm)하면 게이트웨이가 예약을 생성한다.
 """
 
 import ipaddress
-import uuid
-from datetime import UTC, datetime, timedelta
-from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,11 +12,9 @@ from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field, field_validator
 
 from app.agents.vision import VisionExtractionError, extract_reservation_draft
-from app.api.deps import get_chat_model, get_pending_store, get_request_context
+from app.api.deps import get_chat_model, get_request_context, get_settings
 from app.backend.auth import RequestContext
-from app.confirm.models import ConfirmationCard, ConfirmationField, ReservationDraft
-from app.confirm.store import PendingWriteStore
-from app.session.models import PendingWrite
+from app.core.config import Settings
 
 router = APIRouter()
 
@@ -36,6 +32,7 @@ def _is_blocked_host(host: str) -> bool:
 
 class OcrReservationRequest(BaseModel):
     image_url: str = Field(..., max_length=2000)
+    model: str | None = None  # 게이트웨이 힌트(현재는 ai-server 설정 모델 사용)
 
     @field_validator("image_url")
     @classmethod
@@ -48,59 +45,42 @@ class OcrReservationRequest(BaseModel):
         return v
 
 
-def _draft_to_payload(draft: ReservationDraft) -> dict[str, Any]:
-    """ReservationDraft → 백엔드 POST /reservations DTO(None은 생략)."""
-    payload: dict[str, Any] = {
-        "date": draft.date,
-        "customerName": draft.customer_name,
-        "title": draft.title,
-        "amount": draft.amount or 0,
-    }
-    if draft.time:
-        payload["time"] = draft.time
-    if draft.customer_phone:
-        payload["customerPhone"] = draft.customer_phone
-    return payload
+class DraftOut(BaseModel):
+    """추출된 예약 초안(snake_case — 게이트웨이 계약)."""
+
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    date: str | None = None
+    time: str | None = None
+    title: str | None = None
+    amount: int | None = None
 
 
-def _draft_to_fields(draft: ReservationDraft) -> list[ConfirmationField]:
-    pairs = [
-        ("고객", draft.customer_name),
-        ("연락처", draft.customer_phone),
-        ("날짜", draft.date),
-        ("시간", draft.time),
-        ("품목", draft.title),
-        ("금액", f"{draft.amount:,}원" if draft.amount is not None else None),
-    ]
-    return [ConfirmationField(label=label, value=value) for label, value in pairs if value]
+class OcrExtractResponse(BaseModel):
+    draft: DraftOut
+    model: str
 
 
-@router.post("/ocr/reservation", response_model=ConfirmationCard)
+@router.post("/ocr/reservation", response_model=OcrExtractResponse)
 async def ocr_reservation(
     req: OcrReservationRequest,
     ctx: RequestContext = Depends(get_request_context),
     model: BaseChatModel = Depends(get_chat_model),
-    store: PendingWriteStore = Depends(get_pending_store),
-) -> ConfirmationCard:
+    settings: Settings = Depends(get_settings),
+) -> OcrExtractResponse:
     try:
         draft = await extract_reservation_draft(model, req.image_url)
     except VisionExtractionError:
         raise HTTPException(status_code=422, detail="이미지에서 예약 정보를 읽지 못했어요.") from None
 
-    proposal_id = uuid.uuid4().hex  # uuid4 = os.urandom 기반 CSPRNG — 추측 불가
-    payload = _draft_to_payload(draft)
-    when = f"{draft.date} {draft.time}" if draft.time else draft.date
-    summary = f"{when} · {draft.customer_name} · {draft.title}"
-    pending = PendingWrite(id=proposal_id, action="create_reservation", payload=payload, summary=summary)
-
-    # expires_at은 저장(TTL)과 동일 출처로 — 카드 표시와 실제 만료의 불일치 방지.
-    expires_at = (datetime.now(UTC) + timedelta(seconds=store.ttl_seconds)).isoformat()
-    await store.save(pending, user_id=ctx.user_id)
-
-    return ConfirmationCard(
-        proposal_id=proposal_id,
-        action="create_reservation",
-        summary=summary,
-        fields=_draft_to_fields(draft),
-        expires_at=expires_at,
+    return OcrExtractResponse(
+        draft=DraftOut(
+            customer_name=draft.customer_name,
+            customer_phone=draft.customer_phone,
+            date=draft.date,
+            time=draft.time,
+            title=draft.title,
+            amount=draft.amount,
+        ),
+        model=settings.llm_model,
     )
