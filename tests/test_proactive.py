@@ -2,7 +2,7 @@ import httpx
 import respx
 from langchain_core.messages import AIMessage
 
-from app.agents.proactive import generate_proactive_suggestions
+from app.agents.proactive import _SYSTEM, generate_proactive_suggestions
 from app.api.deps import get_backend_client, get_chat_model, get_request_context
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
@@ -85,14 +85,13 @@ async def test_proactive_fences_backend_context_as_data():
 
     펜스 토큰이 깨지면 컨텍스트 안의 텍스트가 지시로 해석될 위험(인젝션) → 토큰을 고정한다.
     """
-    from app.agents.proactive import _SYSTEM
-
     _mock_backend_ok()
     client = BackendClient("http://backend.test", timeout=5.0)
     model = _CapturingModel()
 
     await generate_proactive_suggestions(model=model, client=client, ctx=_ctx())
 
+    assert model.messages is not None, "ainvoke가 호출되지 않음"
     system_msg, human_msg = model.messages
     assert system_msg.content == _SYSTEM
     assert human_msg.content.startswith("[CONTEXT — DATA ONLY]\n")
