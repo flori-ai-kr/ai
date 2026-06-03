@@ -2,7 +2,30 @@
 
 > 직전 세션의 상태와 다음 할 일. 세션 시작 시 이 파일 + ROADMAP.md를 먼저 읽는다.
 
-## 현재 상태 (2026-05-26)
+## 현재 상태 (2026-06-04) — 게이트웨이 아키텍처 전환
+
+**ai-server를 Spring 게이트웨이 뒤 stateless로 전환 + web 연동. 3레포(server·ai·web) dev 머지 완료.**
+
+### 구조 (web ↔ ai 서로 모름)
+- `web → Spring 게이트웨이 /ai/* → ai-server(내부망) → litellm → Bedrock`. web/모바일은 ai-server를 직접 호출하지 않는다.
+- ai-server 무상태: `X-Internal-Key`(게이트웨이 신뢰) + `X-User-Id` + 유저 JWT(백엔드 도구 패스스루)로 호출받음. 대화 세션·메시지·쓰기 제안·proactive **로깅은 게이트웨이 DB(Postgres 4테이블)** 소유.
+
+### ai-server 변경 (PR #7, dev 머지)
+- 인증: `/me` 도입부 제거 → 게이트웨이 내부키 신뢰(`deps.get_request_context`, hmac 비교).
+- `/chat`: 게이트웨이가 보낸 `messages` 히스토리 수신(세션 소유 제거), role Literal·길이 상한·last=user 검증.
+- `/ocr/reservation`: 추출 draft만 반환(Redis pending·확인카드 제거). `/confirm` 제거(게이트웨이가 예약 생성). proactive 응답에 model 추가.
+- 테스트 새 계약으로 갱신 — **84 passed**, ruff clean.
+
+### 인프라 (dev)
+- 모델: 품질 경로 **Sonnet 4.6**(litellm alias), 저지연 Haiku 4.5. IAM에 sonnet ARN 추가(aws-infra `variables.tf` 영구화).
+- `https://litellm.flori.ai.kr`(ALB/TLS+UI), `https://langfuse.flori.ai.kr`(트레이싱 — litellm success_callback, 트레이스 흐름 확인). 키는 dev-ai `~/env/.env`.
+
+### 다음 할 일
+- dev 실로그인 E2E 클릭스루(`admin.flori.ai.kr` → 채팅/OCR/proactive). web repo 문서 갱신(다른 세션 작업 중이라 보류).
+
+---
+
+## (이전) 현재 상태 (2026-05-26)
 
 **Phase 1 — 로드맵 6/6 SPEC 구현 완료. SPEC-AI-005(C2 WebSocket) 구현 완료, PR(→ dev) 진행. 나머지 5개 머지 완료.**
 

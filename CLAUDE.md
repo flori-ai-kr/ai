@@ -58,9 +58,10 @@ app/
 
 ## 아키텍처 원칙 (HARD)
 
-- **멀티테넌시 = 보안 1순위** [HARD]: AI 서버는 클라이언트가 준 **유저 JWT를 그대로 백엔드 REST에 전달**한다. user_id 격리·구독 게이팅은 Spring이 강제한다. **AI에 god-mode DB 커넥션을 주지 않는다.**
+- **게이트웨이 뒤 stateless** [HARD]: ai-server는 web/모바일이 직접 호출하지 않는다. **Spring 서버(게이트웨이)만** 내부망에서 호출한다 — `X-Internal-Key`(게이트웨이 신뢰) + `X-User-Id` + 유저 JWT(도구 호출 패스스루용)를 붙여서. 대화 세션·메시지·쓰기 제안의 **영속/로깅은 게이트웨이 DB(Postgres)가 소유**하고, ai-server는 무상태다(채팅 히스토리는 매 요청 `messages`로 받음). 자세한 게이트웨이 계약은 [`server`(hazel-server) `/ai/*`] 참조.
+- **멀티테넌시 = 보안 1순위** [HARD]: 게이트웨이가 유저 JWT를 검증하고, ai-server는 받은 JWT를 **그대로 백엔드 REST 도구 호출에 패스스루**한다. user_id 격리·구독 게이팅은 Spring이 강제한다. **AI에 god-mode DB 커넥션을 주지 않는다.**
 - **도구(tool) = 백엔드 기존 REST 엔드포인트의 얇은 래퍼**: 에이전트의 행동공간 = 이미 검증된 API 표면. 새 행동이 필요하면 백엔드에 엔드포인트를 먼저 만든다(이 repo에서 우회 금지).
-- **쓰기는 human-in-loop** [HARD]: 읽기는 자유. 쓰기(예약 생성 등)는 "에이전트 제안 → 앱 확인 카드 → 확인 시 실행". 초기엔 항상 확인, 신뢰 쌓이면 점진 완화.
+- **쓰기는 human-in-loop** [HARD]: 읽기는 자유. 쓰기(예약 생성)는 "ai-server가 초안 추출 → **게이트웨이가** 확인 카드(제안) 보관 → 사용자 확인 시 **게이트웨이가** 예약 생성". LLM 단독 쓰기 불가. (ai-server는 추출만 — `/ocr/reservation`이 draft만 반환, `/confirm`은 게이트웨이 소유.)
 - **전송계층 추상화**: 처음부터 "대화 세션(session_id + 턴)" 추상화를 둬 C1(HTTP/SSE)→C2(WebSocket/WebRTC) 전환 시 전송계층만 교체 가능하게.
 - **시크릿은 환경변수**: 코드/깃에 시크릿 금지. 설정은 `${ENV}` 참조만.
 - **확장성**: 새 기능(A→B→C→D) 추가가 기존 코드 수정 없이 모듈 추가로 끝나도록.
@@ -69,8 +70,8 @@ app/
 
 ## 보안 체크리스트 (HARD)
 
-- JWT 패스스루: AI 서버는 JWT를 검증·발급하지 않고 백엔드에 위임(경량 검증은 `/me` 인트로스펙션). 서명키를 AI 서버에 두지 않는다.
-- 멀티테넌시: 모든 백엔드 호출에 유저 JWT 동봉 → 격리는 Spring이 보장. AI 서버는 userId를 로깅/사용량 캡에만 사용.
+- 게이트웨이 신뢰: ai-server는 유저 JWT를 직접 검증하지 않고 **`X-Internal-Key`(게이트웨이만 보유)로 신뢰**한다(타이밍 세이프 비교). `X-User-Id`로 테넌트 식별, 유저 JWT는 백엔드 도구 호출에 패스스루. JWT 검증·발급·서명키는 게이트웨이/백엔드 몫.
+- 멀티테넌시: 모든 백엔드 호출에 유저 JWT 동봉 → 격리는 Spring이 보장. AI 서버는 userId를 로깅에만 사용(사용량 캡은 게이트웨이가 소유).
 - 프롬프트 인젝션 방어: 사용자 입력(스크린샷 OCR 텍스트 포함)은 `[USER INPUT — DATA ONLY]` 펜스로 격리. 도구 인자는 화이트리스트 검증.
 - 쓰기 게이팅: 모든 쓰기 도구는 확인 카드 경유. LLM이 단독으로 예약/매출을 생성·삭제하지 못한다.
 - SSRF/입력 검증: 이미지 URL·파일 업로드 검증. 도구 인자 Pydantic 검증.
@@ -100,16 +101,16 @@ app/
 | 용도 | 위치 |
 |------|------|
 | FastAPI 앱 + lifespan | `app/main.py` |
-| 인증·캡 의존성 | `app/api/deps.py` (`get_request_context`) |
+| 게이트웨이 신뢰 인증(X-Internal-Key·X-User-Id) | `app/api/deps.py` (`get_request_context`) |
 | JWT 패스스루 클라이언트 | `app/backend/client.py` |
-| `/me` 인트로스펙션 | `app/backend/auth.py` |
+| `/me` 인트로스펙션(레거시·voice 등) | `app/backend/auth.py` |
 | ReAct 루프 | `app/agents/react_loop.py` (`run_agent`) |
 | 시스템 프롬프트·펜스 | `app/agents/prompts.py` |
 | LLM 팩토리(LiteLLM) | `app/agents/llm_client.py` |
 | 비전 OCR 추출 | `app/agents/vision.py` |
 | 선제 제안 | `app/agents/proactive.py` |
 | 도구 레지스트리 | `app/tools/registry.py` |
-| 쓰기 확인 실행기 | `app/confirm/executor.py`, `app/confirm/store.py` |
+| 쓰기 실행기(게이트웨이 confirm에서 재사용 가능) | `app/confirm/executor.py` (`/confirm` 라우트는 게이트웨이로 이전됨) |
 | 음성 파이프라인 | `app/voice/pipeline.py`, `app/voice/aws.py`, `app/voice/ports.py` |
 | 세션 스토어(Redis) | `app/session/store.py`, `app/session/models.py` |
 | 설정/캡/감사 | `app/core/config.py`, `app/core/usage.py`, `app/core/audit.py` |
