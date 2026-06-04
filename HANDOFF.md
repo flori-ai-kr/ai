@@ -2,7 +2,24 @@
 
 > 직전 세션의 상태와 다음 할 일. 세션 시작 시 이 파일 + ROADMAP.md를 먼저 읽는다.
 
-## 현재 상태 (2026-06-04) — 게이트웨이 아키텍처 전환
+## 현재 상태 (2026-06-04) — best-practice 개선 세션 (improve/ai-best-practice)
+
+**프롬프트 팩 §4 ai 4축을 가이드 세션(자율 일괄)으로 처리. dev 기준 워크트리 `improve/ai-best-practice`.**
+
+- C(안정성): ① 한 턴 독립 tool_calls `asyncio.gather` 병렬화 ② 비전/proactive `with_structured_output` + 수제 파서 폴백(인젝션 펜스 유지) ③ 툴 description 보강 + `Field(examples)`.
+- B(관측성): LLM 토큰 usage 감사 로깅(`llm_usage`) + `@observe`(vision/voice) 확대 + langfuse **optional** 의존성 선언.
+- A(비용/캐싱): **보류** — 캡 전면화=stateless 전환으로 stale(캡=게이트웨이 소유), prompt cache=토큰 임계 미달, litellm fallback=infra(범위 밖).
+- D(LangGraph): **조건부 보류** 평가 문서(`docs/features/26-06-04-ai-langgraph-adoption-evaluation.md`).
+- 세션 종합: `docs/features/26-06-04-ai-best-practice-session.md`. 검증 **ruff clean · pytest 98 passed**.
+
+### 후속(별도 PR)
+- `docs/ARCHITECTURE.md`(05-28) 게이트웨이 전환 반영 갱신(현재 배너만 추가).
+- `app/agents/graph.py`(echo 스켈레톤)·`app/confirm/executor.py`(dead code) 정리.
+- 음성 경로 캡/세션 소유권 게이트웨이 일관화 결정.
+
+---
+
+## (이전) 현재 상태 (2026-06-04) — 게이트웨이 아키텍처 전환
 
 **ai-server를 Spring 게이트웨이 뒤 stateless로 전환 + web 연동. 3레포(server·ai·web) dev 머지 완료.**
 
