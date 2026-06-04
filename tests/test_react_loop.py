@@ -79,6 +79,44 @@ async def test_agent_calls_tool_then_returns_final_answer(caplog):
 
 
 @respx.mock
+async def test_agent_runs_multiple_tool_calls_in_one_turn(caplog):
+    # 한 턴에 두 개의 독립 도구 호출 → 둘 다 디스패치되고 ToolMessage 순서가 보존된다.
+    month = respx.get("http://backend.test/dashboard/month").mock(
+        return_value=httpx.Response(200, json={"summary": {"total": 500}})
+    )
+    today = respx.get("http://backend.test/dashboard/today").mock(
+        return_value=httpx.Response(200, json={"today": {"reservations": 2}})
+    )
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "get_month_dashboard", "args": {"month": "2026-05"}, "id": "c1"},
+                    {"name": "get_today_dashboard", "args": {}, "id": "c2"},
+                ],
+            ),
+            AIMessage(content="이번 달과 오늘 데이터를 모두 확인했어요."),
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="요약해줘")
+
+    assert reply == "이번 달과 오늘 데이터를 모두 확인했어요."
+    assert month.called and today.called  # 두 도구 모두 실행됨
+    # 두 도구 호출 모두 감사 로깅됨
+    tools_logged = {
+        json.loads(r.getMessage()).get("tool")
+        for r in caplog.records
+        if json.loads(r.getMessage()).get("event") == "tool_call"
+    }
+    assert tools_logged == {"get_month_dashboard", "get_today_dashboard"}
+    await client.aclose()
+
+
+@respx.mock
 async def test_agent_stops_at_iteration_cap():
     respx.get("http://backend.test/dashboard/today").mock(return_value=httpx.Response(200, json={"ok": True}))
     model = _AlwaysToolModel()

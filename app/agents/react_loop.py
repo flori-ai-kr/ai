@@ -6,6 +6,7 @@ LLM에 도구를 bind → tool_calls 디스패치 → ToolMessage 누적 → 최
 무엇이든 주입 가능(테스트는 fake model).
 """
 
+import asyncio
 import json
 import uuid
 
@@ -28,6 +29,18 @@ def _truncate_result(raw: str) -> str:
     if len(raw) > _MAX_TOOL_RESULT_CHARS:
         return raw[:_MAX_TOOL_RESULT_CHARS] + "\n...[truncated]"
     return raw
+
+
+async def _run_tool_call(client: BackendClient, ctx: RequestContext, call: dict) -> ToolMessage:
+    """도구 1건을 감사 로깅 + 디스패치하고 ToolMessage로 직렬화한다(병렬 실행 단위)."""
+    name = call["name"]
+    args = call.get("args") or {}
+    # id가 없으면 고유값 생성 — 동일 도구 연속 호출이 tool_call_id를 공유하는 버그 방지
+    call_id = call.get("id") or f"{name}-{uuid.uuid4().hex[:8]}"
+    audit_event("tool_call", user_id=ctx.user_id, tool=name, args=args)
+    result = await dispatch(client, ctx, name, args)
+    content = _truncate_result(json.dumps(result, ensure_ascii=False, default=str))
+    return ToolMessage(content=content, tool_call_id=call_id)
 
 
 def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
@@ -65,15 +78,10 @@ async def run_agent(
         if not tool_calls:
             return ai.content or ""
 
-        for call in tool_calls:
-            name = call["name"]
-            args = call.get("args") or {}
-            # id가 없으면 고유값 생성 — 동일 도구 연속 호출이 tool_call_id를 공유하는 버그 방지
-            call_id = call.get("id") or f"{name}-{uuid.uuid4().hex[:8]}"
-            audit_event("tool_call", user_id=ctx.user_id, tool=name, args=args)
-            result = await dispatch(client, ctx, name, args)
-            content = _truncate_result(json.dumps(result, ensure_ascii=False, default=str))
-            messages.append(ToolMessage(content=content, tool_call_id=call_id))
+        # 한 턴의 도구 호출은 서로 독립적인 백엔드 읽기(A) — 병렬 실행해 지연을 줄인다.
+        # gather가 입력 순서를 보존하므로 ToolMessage는 tool_calls 순서대로 누적된다.
+        tool_messages = await asyncio.gather(*(_run_tool_call(client, ctx, call) for call in tool_calls))
+        messages.extend(tool_messages)
 
     # iteration cap 도달 — 무한 루프 방지
     audit_event("agent_cap_reached", user_id=ctx.user_id, iterations=max_iterations)
