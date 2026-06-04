@@ -22,6 +22,14 @@ def test_registry_tools_are_openai_schemas_and_read_only():
     assert all(spec.is_write is False for spec in REGISTRY.values())
 
 
+def test_month_schema_exposes_examples_for_tool_use():
+    # LLM 도구 사용 정확도 — month 인자 스키마에 형식 예시가 노출되어야 한다.
+    schema = next(s for s in tool_schemas() if s["function"]["name"] == "get_month_dashboard")
+    month = schema["function"]["parameters"]["properties"]["month"]
+    assert month.get("examples"), "month 인자에 examples가 있어야 한다"
+    assert "2026-05" in month["examples"]
+
+
 @respx.mock
 async def test_dispatch_forwards_jwt_and_returns_backend_data():
     route = respx.get("http://backend.test/dashboard/month").mock(
