@@ -34,6 +34,23 @@ class _CapturingModel(_Model):
         return await super().ainvoke(messages)
 
 
+class _StructuredModel:
+    """with_structured_output을 지원하는 모델 — 스키마 강제 경로 검증용."""
+
+    def __init__(self, suggestions) -> None:
+        from app.agents.proactive import _SuggestionList
+
+        self._payload = _SuggestionList(suggestions=suggestions)
+        self.requested_schema = None
+
+    def with_structured_output(self, schema):
+        self.requested_schema = schema
+        return self
+
+    async def ainvoke(self, messages):
+        return self._payload
+
+
 def _ctx() -> RequestContext:
     return RequestContext(user_id="u1", jwt="jwt-xyz")
 
@@ -56,6 +73,22 @@ async def test_proactive_reads_context_with_jwt_and_parses_suggestions():
     assert len(suggestions) == 2
     assert suggestions[0].title == "내일 예약 3건"
     assert route.calls.last.request.headers["Authorization"] == "Bearer jwt-xyz"
+    await client.aclose()
+
+
+@respx.mock
+async def test_proactive_uses_structured_output_when_supported():
+    from app.agents.proactive import Suggestion, _SuggestionList
+
+    _mock_backend_ok()
+    client = BackendClient("http://backend.test", timeout=5.0)
+    model = _StructuredModel([Suggestion(title="물주기", detail="난초에 물 줄 때예요.")])
+
+    suggestions = await generate_proactive_suggestions(model=model, client=client, ctx=_ctx())
+
+    assert model.requested_schema is _SuggestionList  # 스키마가 강제됨
+    assert len(suggestions) == 1
+    assert suggestions[0].title == "물주기"
     await client.aclose()
 
 
