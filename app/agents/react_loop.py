@@ -6,7 +6,9 @@ LLM에 도구를 bind → tool_calls 디스패치 → ToolMessage 누적 → 최
 무엇이든 주입 가능(테스트는 fake model).
 """
 
+import asyncio
 import json
+import logging
 import uuid
 
 from langchain_core.language_models import BaseChatModel
@@ -20,6 +22,8 @@ from app.observability.tracing import observe
 from app.session.models import Turn
 from app.tools.registry import dispatch, tool_schemas
 
+_log = logging.getLogger(__name__)
+
 _CAP_FALLBACK = "지금은 분석을 끝맺지 못했어요. 잠시 후 다시 시도해 주세요."
 _MAX_TOOL_RESULT_CHARS = 8_000  # ToolMessage 1건 상한 — 컨텍스트 폭주/메모리 DoS 방지
 
@@ -28,6 +32,47 @@ def _truncate_result(raw: str) -> str:
     if len(raw) > _MAX_TOOL_RESULT_CHARS:
         return raw[:_MAX_TOOL_RESULT_CHARS] + "\n...[truncated]"
     return raw
+
+
+async def _run_tool_call(client: BackendClient, ctx: RequestContext, call: dict) -> ToolMessage:
+    """도구 1건을 감사 로깅 + 디스패치하고 ToolMessage로 직렬화한다(병렬 실행 단위)."""
+    name = call["name"]
+    args = call.get("args") or {}
+    # id가 없으면 고유값 생성 — 동일 도구 연속 호출이 tool_call_id를 공유하는 버그 방지
+    call_id = call.get("id") or f"{name}-{uuid.uuid4().hex[:8]}"
+    audit_event("tool_call", user_id=ctx.user_id, tool=name, args=args)
+    try:
+        result = await dispatch(client, ctx, name, args)
+        content = _truncate_result(json.dumps(result, ensure_ascii=False, default=str))
+    except Exception:
+        # dispatch는 보통 에러 dict를 반환하지만, 직렬화 등 예기치 못한 실패도 한 도구에
+        # 격리한다 — gather가 형제 호출을 취소하거나 턴 전체가 죽지 않게(에러는 ToolMessage로
+        # 흘려 self-correction 유지). 에러 본문엔 PII가 없도록 도구명만 남긴다.
+        _log.warning("tool '%s' raised unexpectedly; isolating", name, exc_info=True)
+        audit_event("tool_call_error", user_id=ctx.user_id, tool=name)
+        content = json.dumps({"error": f"tool '{name}' failed unexpectedly"}, ensure_ascii=False)
+    return ToolMessage(content=content, tool_call_id=call_id)
+
+
+def _audit_llm_usage(ctx: RequestContext, ai: AIMessage) -> None:
+    """LLM 응답의 토큰 사용량을 감사 로깅한다(비용 가시성). 토큰 수는 PII가 아니다.
+
+    감사 실패가 에이전트를 막아선 안 되므로, usage 형태가 예상과 다르면(프록시별 차이)
+    조용히 건너뛴다.
+    """
+    usage = getattr(ai, "usage_metadata", None)
+    if not usage or not hasattr(usage, "get"):
+        return
+    try:
+        audit_event(
+            "llm_usage",
+            user_id=ctx.user_id,
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            total_tokens=usage.get("total_tokens"),
+        )
+    except Exception:  # noqa: BLE001 — 감사는 보조 기능, 본 흐름을 막지 않는다
+        _log.debug("llm_usage audit skipped", exc_info=True)
 
 
 def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
@@ -59,21 +104,17 @@ async def run_agent(
 
     for _ in range(max_iterations):
         ai: AIMessage = await bound.ainvoke(messages)
+        _audit_llm_usage(ctx, ai)
         messages.append(ai)
 
         tool_calls = getattr(ai, "tool_calls", None) or []
         if not tool_calls:
             return ai.content or ""
 
-        for call in tool_calls:
-            name = call["name"]
-            args = call.get("args") or {}
-            # id가 없으면 고유값 생성 — 동일 도구 연속 호출이 tool_call_id를 공유하는 버그 방지
-            call_id = call.get("id") or f"{name}-{uuid.uuid4().hex[:8]}"
-            audit_event("tool_call", user_id=ctx.user_id, tool=name, args=args)
-            result = await dispatch(client, ctx, name, args)
-            content = _truncate_result(json.dumps(result, ensure_ascii=False, default=str))
-            messages.append(ToolMessage(content=content, tool_call_id=call_id))
+        # 한 턴의 도구 호출은 서로 독립적인 백엔드 읽기(A) — 병렬 실행해 지연을 줄인다.
+        # gather가 입력 순서를 보존하므로 ToolMessage는 tool_calls 순서대로 누적된다.
+        tool_messages = await asyncio.gather(*(_run_tool_call(client, ctx, call) for call in tool_calls))
+        messages.extend(tool_messages)
 
     # iteration cap 도달 — 무한 루프 방지
     audit_event("agent_cap_reached", user_id=ctx.user_id, iterations=max_iterations)

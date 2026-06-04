@@ -16,6 +16,12 @@ dependencies = [
     "amazon-transcribe>=0.6",
 ]
 
+[project.optional-dependencies]
+# 관측성(선택). 미설치 시 app/observability/tracing.py가 no-op로 폴백한다.
+# 운영 트레이싱은 현재 LiteLLM success_callback(프록시단)이 담당하며, 이 extra는
+# 앱단 @observe 스팬을 켜고 싶을 때만 설치한다(`uv sync --extra observability`).
+observability = ["langfuse>=3.0"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

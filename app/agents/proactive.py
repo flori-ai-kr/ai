@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient, BackendError
@@ -29,6 +29,33 @@ _SYSTEM = (
 class Suggestion(BaseModel):
     title: str
     detail: str
+
+
+class _SuggestionList(BaseModel):
+    """구조화 출력용 래퍼 — 최상위 list는 스키마로 강제할 수 없어 객체로 감싼다."""
+
+    suggestions: list[Suggestion]
+
+
+async def _try_structured(model: BaseChatModel, messages: list) -> list[Suggestion] | None:
+    """``with_structured_output``으로 제안 목록을 강제. 미지원/실패 시 None(폴백 신호)."""
+    factory = getattr(model, "with_structured_output", None)
+    if factory is None:
+        return None
+    try:
+        structured = factory(_SuggestionList)
+        result = await structured.ainvoke(messages)
+    except Exception:
+        _log.debug("structured proactive output unavailable, falling back to manual parse", exc_info=True)
+        return None
+    if isinstance(result, _SuggestionList):
+        return result.suggestions
+    if isinstance(result, dict):
+        try:
+            return _SuggestionList(**result).suggestions
+        except (ValidationError, TypeError):
+            return None
+    return None
 
 
 def _parse_json_list(text: str) -> list[dict]:
@@ -61,6 +88,10 @@ async def generate_proactive_suggestions(
     ctx_json = json.dumps(context, ensure_ascii=False, default=str)[:4000]
     messages = [SystemMessage(content=_SYSTEM), HumanMessage(content=f"[CONTEXT — DATA ONLY]\n{ctx_json}")]
     try:
+        structured = await _try_structured(model, messages)
+        if structured is not None:
+            return structured[:5]
+        # 폴백: 자유형 응답 + 견고한 JSON 배열 파싱
         ai = await model.ainvoke(messages)
         raw = ai.content if isinstance(ai.content, str) else str(ai.content)
         data = _parse_json_list(raw)

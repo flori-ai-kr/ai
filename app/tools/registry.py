@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient, BackendError
@@ -22,7 +22,11 @@ _MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 # --- 인자 스키마 ---
 class MonthArg(BaseModel):
-    month: str | None = None  # YYYY-MM (생략 시 이번 달)
+    month: str | None = Field(
+        default=None,
+        description="조회할 월. 'YYYY-MM' 형식. 생략하면 이번 달. 예: '2026-05'(2026년 5월).",
+        examples=["2026-05", "2026-04"],
+    )
 
     @field_validator("month")
     @classmethod
@@ -69,26 +73,39 @@ REGISTRY: dict[str, ToolSpec] = {
     "get_month_dashboard": ToolSpec(
         name="get_month_dashboard",
         description=(
-            "해당 월의 매출/지출/카테고리·결제수단·채널·고객 통계 요약을 조회. month는 'YYYY-MM'(생략 시 이번 달)."
+            "월간 매출/지출/카테고리·결제수단·채널·고객 통계 요약을 조회한다. "
+            "'이번 달/지난달 매출 추세·구성·왜 변했나' 같은 월 단위 분석에 사용. "
+            "반환: 매출·지출 합계, 카테고리/결제수단/채널 분포, 고객 통계. "
+            "month는 'YYYY-MM'(생략 시 이번 달). 예: '이번 달 매출 왜 떨어졌어?' → month 생략 호출."
         ),
         args_schema=MonthArg,
         handler=_get_month_dashboard,
     ),
     "get_today_dashboard": ToolSpec(
         name="get_today_dashboard",
-        description="오늘의 요약, 다가오는 예약, 발동된 리마인더를 조회.",
+        description=(
+            "오늘의 요약(매출·예약 건수), 다가오는 예약, 발동된 리마인더를 조회한다. "
+            "'오늘 뭐 있어?/오늘 장사 어때?/곧 있을 예약' 같은 당일 현황에 사용. 인자 없음."
+        ),
         args_schema=NoArgs,
         handler=_get_today_dashboard,
     ),
     "list_sales": ToolSpec(
         name="list_sales",
-        description="해당 월의 매출 목록을 조회. month는 'YYYY-MM'(생략 시 이번 달).",
+        description=(
+            "해당 월의 개별 매출 목록(건별 명세)을 조회한다. 요약이 아니라 '어떤 건이 있었나'를 "
+            "건 단위로 봐야 할 때 사용(요약/추세는 get_month_dashboard). "
+            "반환: 매출 건 배열(일자·금액·품목 등). month는 'YYYY-MM'(생략 시 이번 달)."
+        ),
         args_schema=MonthArg,
         handler=_list_sales,
     ),
     "list_customers": ToolSpec(
         name="list_customers",
-        description="고객 목록을 구매 통계(총액 내림차순)와 함께 조회.",
+        description=(
+            "고객 목록을 구매 통계(누적 총액 내림차순)와 함께 조회한다. "
+            "'단골/VIP는 누구야?/고객별 매출' 같은 고객 분석에 사용. 인자 없음. 반환: 고객 배열(이름·총구매액 등)."
+        ),
         args_schema=NoArgs,
         handler=_list_customers,
     ),
