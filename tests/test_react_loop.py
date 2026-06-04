@@ -136,6 +136,39 @@ async def test_agent_logs_llm_token_usage(caplog):
     await client.aclose()
 
 
+async def test_tool_call_error_is_isolated_not_crash(caplog, monkeypatch):
+    # 도구가 예기치 않게 raise해도 턴이 죽지 않고, 에러를 ToolMessage로 흘려 self-correction.
+    async def _boom(client, ctx, name, args):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr("app.agents.react_loop.dispatch", _boom)
+    model = _ScriptedModel(
+        [
+            AIMessage(content="", tool_calls=[{"name": "get_today_dashboard", "args": {}, "id": "c1"}]),
+            AIMessage(content="에러를 확인하고 복구했어요."),
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="x")
+
+    assert reply == "에러를 확인하고 복구했어요."  # 크래시 없이 루프 계속
+    events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "flori.audit"]
+    assert any(e.get("event") == "tool_call_error" and e.get("tool") == "get_today_dashboard" for e in events)
+    await client.aclose()
+
+
+async def test_audit_llm_usage_tolerates_non_dict_metadata(caplog):
+    # usage_metadata가 .get 없는 형태여도 감사가 에이전트를 막지 않는다.
+    ai = AIMessage(content="응답")
+    ai.usage_metadata = "weird"  # dict 아님(프록시별 변형 시뮬레이션)
+    model = _ScriptedModel([ai])
+    client = BackendClient("http://backend.test", timeout=5.0)
+    reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="x")
+    assert reply == "응답"  # 예외 없이 완료
+    await client.aclose()
+
+
 @respx.mock
 async def test_agent_stops_at_iteration_cap():
     respx.get("http://backend.test/dashboard/today").mock(return_value=httpx.Response(200, json={"ok": True}))

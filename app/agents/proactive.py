@@ -43,7 +43,8 @@ async def _try_structured(model: BaseChatModel, messages: list) -> list[Suggesti
     if factory is None:
         return None
     try:
-        result = await factory(_SuggestionList).ainvoke(messages)
+        structured = factory(_SuggestionList)
+        result = await structured.ainvoke(messages)
     except Exception:
         _log.debug("structured proactive output unavailable, falling back to manual parse", exc_info=True)
         return None
