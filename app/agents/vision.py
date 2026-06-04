@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
 from app.confirm.models import ReservationDraft
+from app.observability.tracing import observe
 
 _log = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ async def _try_structured(model: BaseChatModel, messages: list) -> ReservationDr
     return None
 
 
+@observe(name="extract_reservation_draft")
 async def extract_reservation_draft(model: BaseChatModel, image_url: str) -> ReservationDraft:
     messages = [
         SystemMessage(content=_VISION_SYSTEM),

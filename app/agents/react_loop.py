@@ -43,6 +43,20 @@ async def _run_tool_call(client: BackendClient, ctx: RequestContext, call: dict)
     return ToolMessage(content=content, tool_call_id=call_id)
 
 
+def _audit_llm_usage(ctx: RequestContext, ai: AIMessage) -> None:
+    """LLM 응답의 토큰 사용량을 감사 로깅한다(비용 가시성). 토큰 수는 PII가 아니다."""
+    usage = getattr(ai, "usage_metadata", None)
+    if not usage:
+        return
+    audit_event(
+        "llm_usage",
+        user_id=ctx.user_id,
+        input_tokens=usage.get("input_tokens"),
+        output_tokens=usage.get("output_tokens"),
+        total_tokens=usage.get("total_tokens"),
+    )
+
+
 def _history_to_messages(history: list[Turn] | None) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
     for turn in history or []:
@@ -72,6 +86,7 @@ async def run_agent(
 
     for _ in range(max_iterations):
         ai: AIMessage = await bound.ainvoke(messages)
+        _audit_llm_usage(ctx, ai)
         messages.append(ai)
 
         tool_calls = getattr(ai, "tool_calls", None) or []

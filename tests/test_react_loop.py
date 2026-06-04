@@ -116,6 +116,26 @@ async def test_agent_runs_multiple_tool_calls_in_one_turn(caplog):
     await client.aclose()
 
 
+async def test_agent_logs_llm_token_usage(caplog):
+    # 비용 가시성 — 응답에 usage_metadata가 있으면 llm_usage 감사 이벤트로 기록.
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="안녕하세요.",
+                usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+            )
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        await run_agent(model=model, client=client, ctx=_ctx(), user_text="안녕")
+    usage_events = [
+        json.loads(r.getMessage()) for r in caplog.records if json.loads(r.getMessage()).get("event") == "llm_usage"
+    ]
+    assert usage_events and usage_events[0]["total_tokens"] == 150
+    await client.aclose()
+
+
 @respx.mock
 async def test_agent_stops_at_iteration_cap():
     respx.get("http://backend.test/dashboard/today").mock(return_value=httpx.Response(200, json={"ok": True}))

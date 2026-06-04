@@ -10,6 +10,7 @@ from typing import Any
 from app.agents.react_loop import run_agent
 from app.backend.auth import RequestContext
 from app.backend.client import BackendClient
+from app.observability.tracing import observe
 from app.session.models import Turn
 from app.session.store import SessionStore
 from app.voice.ports import SttProvider, TtsProvider
@@ -22,6 +23,7 @@ class EmptyTranscriptError(Exception):
     """STT가 빈 결과를 반환(묵음/인식 실패)."""
 
 
+@observe(name="run_voice_turn")
 async def run_voice_turn(
     *,
     stt: SttProvider,
