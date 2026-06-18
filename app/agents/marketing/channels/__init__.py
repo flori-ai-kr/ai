@@ -12,7 +12,7 @@ CHANNELS: dict[str, Channel] = {
 def get_channel(name: str) -> Channel:
     channel = CHANNELS.get(name)
     if channel is None:
-        raise KeyError(f"unknown marketing channel: {name}")
+        raise KeyError(f"unknown marketing channel: {name!r} (available: {list(CHANNELS)})")
     return channel
 
 

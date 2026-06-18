@@ -77,5 +77,6 @@ async def marketing_blog(
     except MarketingGenerationError:
         raise HTTPException(status_code=422, detail="블로그 초안을 생성하지 못했어요.") from None
 
-    assert isinstance(draft, BlogDraft)
+    if not isinstance(draft, BlogDraft):
+        raise HTTPException(status_code=500, detail="생성 오류")
     return MarketingBlogResponse(draft=draft, model=settings.llm_model)

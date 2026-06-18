@@ -67,6 +67,7 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
         try:
             draft = schema(**_extract_json(raw))
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
+            _log.warning("marketing draft fallback parse failed: %s (raw[:200]=%s)", exc, raw[:200])
             raise MarketingGenerationError("could not generate marketing draft") from exc
 
     return channel.postprocess(draft, gen_input)
@@ -75,5 +76,6 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
 async def generate_blog_draft(model: BaseChatModel, gen_input: BlogGenInput) -> BlogDraft:
     """블로그 채널 편의 래퍼 — BlogDraft를 반환한다."""
     draft = await generate(model, "blog", gen_input)
-    assert isinstance(draft, BlogDraft)
+    if not isinstance(draft, BlogDraft):
+        raise MarketingGenerationError(f"expected BlogDraft, got {type(draft).__name__}")
     return draft

@@ -64,6 +64,7 @@ class BlogChannel:
         return [SystemMessage(content=BLOG_SYSTEM), HumanMessage(content=content)]
 
     def postprocess(self, draft: BaseModel, gen_input: BlogGenInput) -> BaseModel:
-        assert isinstance(draft, BlogDraft)
+        if not isinstance(draft, BlogDraft):
+            raise TypeError(f"expected BlogDraft, got {type(draft).__name__}")
         shop_name = gen_input.store_context.shop_name if gen_input.store_context else None
         return postprocess_blog(draft, shop_name)
