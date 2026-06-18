@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from redis.asyncio import from_url
 
 from app.agents.llm_client import build_chat_model
-from app.api import chat, health, ocr, proactive, voice, voice_ws, whoami
+from app.api import chat, health, marketing, ocr, proactive, voice, voice_ws, whoami
 from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
 from app.confirm.store import PendingWriteStore
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(whoami.router)
     app.include_router(chat.router)
     app.include_router(ocr.router)
+    app.include_router(marketing.router)
     app.include_router(voice.router)
     app.include_router(voice_ws.router)
     app.include_router(proactive.router)

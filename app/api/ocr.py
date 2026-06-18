@@ -4,30 +4,17 @@
 게이트웨이가 제안(ai_write_proposal)으로 보관 → 사용자가 확인(/ai/confirm)하면 게이트웨이가 예약을 생성한다.
 """
 
-import ipaddress
-from urllib.parse import urlparse
-
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field, field_validator
 
 from app.agents.vision import VisionExtractionError, extract_reservation_draft
 from app.api.deps import get_chat_model, get_request_context, get_settings
+from app.api.validators import validate_http_image_url
 from app.backend.auth import RequestContext
 from app.core.config import Settings
 
 router = APIRouter()
-
-
-def _is_blocked_host(host: str) -> bool:
-    """사설/루프백/링크로컬/예약 IP 리터럴·localhost 차단(SSRF 1차 방어, DNS 리졸브는 미수행)."""
-    if not host or host.lower() == "localhost":
-        return True
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return False  # 도메인명 — IP 리터럴 기반 사설 접근만 차단
-    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
 
 
 class OcrReservationRequest(BaseModel):
@@ -37,12 +24,7 @@ class OcrReservationRequest(BaseModel):
     @field_validator("image_url")
     @classmethod
     def _no_ssrf(cls, v: str) -> str:
-        parsed = urlparse(v)
-        if parsed.scheme not in {"http", "https"}:
-            raise ValueError("image_url must be an http(s) URL")
-        if _is_blocked_host(parsed.hostname or ""):
-            raise ValueError("image_url must not target a private/loopback address")
-        return v
+        return validate_http_image_url(v)
 
 
 class DraftOut(BaseModel):

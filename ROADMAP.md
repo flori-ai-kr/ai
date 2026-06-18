@@ -24,6 +24,14 @@
 | SPEC-AI-005 | DONE | 004 | **C2 실시간 음성**: `WS /voice/stream`(WebSocket 전송) — `run_voice_turn` 재사용, 멀티턴·session_id sticky, 토큰 인증·오디오 누적 상한. WebRTC 및 서브-발화 실시간 partial/바지인은 인프라 필요 → 후속. **94 tests 통과** |
 | SPEC-AI-006 | DONE | 002, 003, 004 | **D 에이전트 확장**: 선제 제안 `GET /agent/proactive`(읽기 컨텍스트 → LLM 제안, fail-open) + Langfuse 관측성 seam(`@observe` no-op 폴백, `run_agent`/proactive 적용). 제안→실행은 confirm 경유 유지. **90 tests 통과** |
 
+## Phase 2 — 마케팅 (출시 헤드라인)
+
+> 교차 repo(ai·api·web). ai-server는 생성 엔진, api는 영속·맥락조립, web은 UX/UI.
+
+| SPEC | status | deps | 범위 |
+|------|--------|------|------|
+| SPEC-AI-007 | DOING | 001, 003 | **M2 네이버 블로그 초안 AI**: 사진+키워드 → 네이버 GEO 최적화 블로그 초안(제목·소제목 단락·FAQ·해시태그). 말투 few-shot(게이트웨이 저장 프로파일) + 매장 실데이터 자동주입(코드 조립) + 채널 추상화(`channels/`, blog만 등록—인스타·스레드 확장 seam) + 지시대명사 후처리. ai-server `POST /marketing/blog` **115 tests 통과**. 게이트웨이/web 진행 중. |
+
 ## 진행 규칙
 - 한 세션은 SPEC을 **하나씩** 끝낸다(lint·테스트·커밋까지). 그 후 다음 TODO로.
 - 의존성 미충족 SPEC은 건너뛰지 않고, 충족된 가장 앞 SPEC을 택한다.
