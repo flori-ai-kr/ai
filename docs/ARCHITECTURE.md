@@ -51,6 +51,7 @@ flowchart LR
 | `POST /voice/turn` | **C1** 음성 푸시투토크 | ✓ | ✗ | `app/api/voice.py` |
 | `WS /voice/stream` | **C2** 실시간 음성(WebSocket) | ✓(토큰) | ✗ | `app/api/voice_ws.py` |
 | `GET /agent/proactive` | **D** 선제 제안 | ✓ | ✗ | `app/api/proactive.py` |
+| `POST /marketing/blog` | **M** 사진+키워드 → 네이버 GEO 블로그 초안 | ✓ | ✗ | `app/api/marketing.py` |
 
 ## 3. 모듈 구조
 
@@ -59,8 +60,8 @@ flowchart LR
 ```
 app/
 ├── main.py             # FastAPI 앱 + lifespan(자원 구성) + 라우터 등록
-├── api/                # 전송: health, whoami, chat, ocr, confirm, voice, voice_ws, proactive, deps, validators
-├── agents/             # react_loop(ReAct 루프), prompts, llm_client, vision, proactive, graph(스켈레톤)
+├── api/                # 전송: health, whoami, chat, ocr, marketing, confirm, voice, voice_ws, proactive, deps, validators
+├── agents/             # react_loop(ReAct 루프), prompts, llm_client, vision, proactive, graph(스켈레톤), marketing/(블로그 생성·채널 추상화)
 ├── tools/              # registry — 백엔드 읽기 도구 + 디스패치 + OpenAI 스키마
 ├── backend/            # client(httpx, JWT 패스스루), auth(/me 인트로스펙션)
 ├── session/            # models(Session/Turn/PendingWrite), store(Redis)

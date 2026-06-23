@@ -10,6 +10,7 @@
 | [26-05-26-D-agent.md](26-05-26-D-agent.md) | D 에이전트 확장 | `GET /agent/proactive` | 선제 제안 + Langfuse 관측성 seam |
 | [26-06-04-ai-best-practice-session.md](26-06-04-ai-best-practice-session.md) | best-practice 개선 세션 | — | 4축(A·B·C·D) 개선 결과·보류 판정 |
 | [26-06-04-ai-langgraph-adoption-evaluation.md](26-06-04-ai-langgraph-adoption-evaluation.md) | ai-D LangGraph 채택 평가 | — | 전환 trade-off·트리거 조건 (결론: 조건부 보류) |
+| [26-06-19-M-marketing-blog.md](26-06-19-M-marketing-blog.md) | M 마케팅 블로그 (출시 헤드라인) | `POST /marketing/blog` | 사진+키워드 → 네이버 GEO 블로그 초안 (few-shot 말투·매장맥락, **RAG 아님**) |
 
 > 공통: 모든 기능은 인증(`/me` 패스스루) + 사용량 캡을 거치고, 쓰기는 confirm(human-in-loop) 경유, 에이전트는 읽기전용. 자세한 공통 사항은 [../ARCHITECTURE.md](../ARCHITECTURE.md) §4·§5.
 >

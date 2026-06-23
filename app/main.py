@@ -10,8 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from redis.asyncio import from_url
 
-from app.agents.llm_client import build_chat_model
-from app.api import chat, health, ocr, proactive, voice, voice_ws, whoami
+from app.agents.llm_client import build_chat_model, build_marketing_chat_model
+from app.api import chat, health, marketing, ocr, proactive, voice, voice_ws, whoami
 from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
 from app.confirm.store import PendingWriteStore
@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_store = SessionStore(redis, ttl_seconds=settings.session_ttl_seconds)
     app.state.pending_store = PendingWriteStore(redis, ttl_seconds=settings.pending_ttl_seconds)
     app.state.chat_model = build_chat_model(settings)
+    app.state.marketing_chat_model = build_marketing_chat_model(settings)
     app.state.stt = TranscribeStt(language=settings.transcribe_language, region=settings.aws_region)
     app.state.tts = PollyTts(voice=settings.polly_voice, region=settings.aws_region)
 
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(whoami.router)
     app.include_router(chat.router)
     app.include_router(ocr.router)
+    app.include_router(marketing.router)
     app.include_router(voice.router)
     app.include_router(voice_ws.router)
     app.include_router(proactive.router)
