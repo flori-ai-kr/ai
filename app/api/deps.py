@@ -48,6 +48,11 @@ def get_chat_model(request: Request) -> BaseChatModel:
     return request.app.state.chat_model
 
 
+def get_marketing_chat_model(request: Request) -> BaseChatModel:
+    """마케팅(블로그) 전용 모델 — 말투 모방용 강한 모델 + 높은 temperature."""
+    return request.app.state.marketing_chat_model
+
+
 def get_pending_store(request: Request) -> PendingWriteStore:
     return request.app.state.pending_store
 

@@ -1,7 +1,7 @@
 import httpx
 
 from app.agents.marketing.schemas import BlogDraft, BlogFaq, BlogSection
-from app.api.deps import get_chat_model, get_request_context
+from app.api.deps import get_marketing_chat_model, get_request_context
 from app.backend.auth import RequestContext
 from app.main import create_app
 
@@ -33,7 +33,7 @@ class _StructuredModel:
 def _app_with_model(model):
     app = create_app()
     app.dependency_overrides[get_request_context] = lambda: RequestContext(user_id="u1", jwt="jwt")
-    app.dependency_overrides[get_chat_model] = lambda: model
+    app.dependency_overrides[get_marketing_chat_model] = lambda: model
     return app
 
 

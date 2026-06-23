@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.agents.marketing.generator import MarketingGenerationError, generate
 from app.agents.marketing.schemas import BlogDraft, BlogGenInput, StoreContext
-from app.api.deps import get_chat_model, get_request_context, get_settings
+from app.api.deps import get_marketing_chat_model, get_request_context, get_settings
 from app.api.validators import validate_http_image_url
 from app.backend.auth import RequestContext
 from app.core.config import Settings
@@ -61,7 +61,7 @@ class MarketingBlogResponse(BaseModel):
 async def marketing_blog(
     req: MarketingBlogRequest,
     ctx: RequestContext = Depends(get_request_context),
-    model: BaseChatModel = Depends(get_chat_model),
+    model: BaseChatModel = Depends(get_marketing_chat_model),
     settings: Settings = Depends(get_settings),
 ) -> MarketingBlogResponse:
     gen_input = BlogGenInput(
@@ -79,4 +79,4 @@ async def marketing_blog(
 
     if not isinstance(draft, BlogDraft):
         raise HTTPException(status_code=500, detail="생성 오류")
-    return MarketingBlogResponse(draft=draft, model=settings.llm_model)
+    return MarketingBlogResponse(draft=draft, model=settings.marketing_model or settings.llm_model)

@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     litellm_api_key: str = ""
     llm_model: str = "claude-haiku-4-5"
 
+    # 마케팅(블로그) 전용 모델 — 말투 모방 품질이 핵심이라 더 강한 모델 + 높은 temperature.
+    # 빈 값이면 llm_model로 폴백. temperature는 문체 다양성을 위해 0보다 크게(0=표준문체 수렴).
+    marketing_model: str = "claude-sonnet-4-6"
+    marketing_temperature: float = 0.7
+
     # 백엔드 (Spring REST — 도구 대상)
     backend_base_url: str = "http://localhost:8080"
 

@@ -37,12 +37,23 @@ class BlogChannel:
         return BlogDraft
 
     def build_messages(self, gen_input: BlogGenInput) -> list:
-        instruction_parts = [
-            "다음 조건으로 네이버 블로그 초안을 작성하세요.",
-            GEO_RULES,
-            "",
-            "[타깃 검색 키워드]\n" + fence_user_input(gen_input.keyword),
-        ]
+        instruction_parts = ["다음 조건으로 네이버 블로그 초안을 작성하세요."]
+
+        # 말투 샘플을 GEO 규칙보다 '먼저' + 강조해 제시한다 — 문체 모방이 핵심이라
+        # 구조 규칙(GEO)에 톤이 눌리지 않도록 우선순위를 프롬프트 위치로도 못박는다.
+        samples = gen_input.tone_samples[:_MAX_TONE_SAMPLES]
+        if samples:
+            instruction_parts.append(
+                "[★ 최우선 — 사장님 말투 모방]\n"
+                "아래 글들은 사장님이 직접 쓴 블로그입니다. 이 문체(이모지 빈도·문장 길이·말끝 어미·"
+                "감탄 표현·고유명사와 해시태그를 본문에 녹이는 방식)를 그대로 모방해서 쓰세요. "
+                "표준 정보글 문체로 평탄화하지 마세요."
+            )
+            for i, sample in enumerate(samples, start=1):
+                instruction_parts.append(f"[말투 샘플 {i}]\n" + fence_user_input(sample))
+
+        instruction_parts.append(GEO_RULES)
+        instruction_parts.append("[타깃 검색 키워드]\n" + fence_user_input(gen_input.keyword))
         if gen_input.situation:
             instruction_parts.append("[상황/시즌]\n" + fence_user_input(gen_input.situation))
         if gen_input.memo:
@@ -51,9 +62,6 @@ class BlogChannel:
         store_block = _store_context_block(gen_input.store_context)
         if store_block:
             instruction_parts.append(store_block)
-
-        for i, sample in enumerate(gen_input.tone_samples[:_MAX_TONE_SAMPLES], start=1):
-            instruction_parts.append(f"[말투 샘플 {i} — 이 문체/어조를 모방]\n" + fence_user_input(sample))
 
         instruction_parts.append(OUTPUT_SPEC)
 
