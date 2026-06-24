@@ -15,10 +15,30 @@ from app.agents.marketing.schemas import BlogDraft, BlogGenInput
 from app.observability.tracing import observe
 
 _log = logging.getLogger(__name__)
+_step = logging.getLogger("flori.marketing")  # 사람이 읽는 스텝 로그(이모지)
 
 
 class MarketingGenerationError(Exception):
     """LLM에서 구조화된 마케팅 초안을 생성하지 못함."""
+
+
+def _prompt_texts(messages: list) -> tuple[str, str]:
+    """조립된 메시지에서 시스템 프롬프트 전문과 지시문(Human 텍스트 전문)을 뽑는다(로그용)."""
+    system = ""
+    instruction = ""
+    for message in messages:
+        content = getattr(message, "content", "")
+        name = type(message).__name__
+        if name == "SystemMessage" and isinstance(content, str):
+            system = content
+        elif name == "HumanMessage":
+            if isinstance(content, list):
+                instruction = "\n".join(
+                    part.get("text", "") for part in content if isinstance(part, dict) and part.get("type") == "text"
+                )
+            elif isinstance(content, str):
+                instruction = content
+    return system, instruction
 
 
 def _extract_json(text: str) -> dict:
@@ -60,8 +80,22 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
     schema = channel.output_schema()
     messages = channel.build_messages(gen_input)
 
+    system, instruction = _prompt_texts(messages)
+    # SYSTEM(설정 프롬프트, 비PII)은 INFO 전문 노출. 지시문(키워드·상황·메모·말투샘플 등
+    # 사용자 입력 포함 — PII 가능)은 DEBUG로만 — 운영 로그 수집 경로에 PII가 적재되지 않게.
+    _step.info(
+        "🧱 프롬프트 조립 완료 | 채널=%s · 시스템 %d자 · 지시문 %d자\n"
+        "──────── [SYSTEM 프롬프트] ────────\n%s\n──────────────────────────────────",
+        channel_name,
+        len(system),
+        len(instruction),
+        system,
+    )
+    _step.debug("🧱 [지시문/HUMAN 전문]\n%s", instruction)
+
     draft = await _try_structured(model, messages, schema)
     if draft is None:
+        _step.info("🪄 구조화 출력 미지원/실패 → JSON 폴백 파싱 시도")
         ai = await model.ainvoke(messages)
         raw = ai.content if isinstance(ai.content, str) else str(ai.content)
         try:
@@ -69,6 +103,8 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
             _log.warning("marketing draft fallback parse failed: %s (raw[:200]=%s)", exc, raw[:200])
             raise MarketingGenerationError("could not generate marketing draft") from exc
+    else:
+        _step.info("🪄 구조화 출력 성공(스키마 강제)")
 
     return channel.postprocess(draft, gen_input)
 

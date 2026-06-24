@@ -95,7 +95,8 @@ async def test_generate_includes_photos_and_store_context():
     serialized = str(model.last_messages)
     assert "https://img.example/rose.png" in serialized
     assert "플로리" in serialized
-    assert "55,000" in serialized
+    # 객단가(평균 금액)는 프롬프트에 넣지 않는다 — 초안 가격 노출 방지(SPEC-AI-008 피드백)
+    assert "55,000" not in serialized
 
 
 async def test_generate_applies_postprocess():

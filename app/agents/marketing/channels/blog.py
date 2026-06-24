@@ -3,7 +3,7 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from app.agents.marketing.geo_rules import BLOG_SYSTEM, GEO_RULES, OUTPUT_SPEC
+from app.agents.marketing.geo_rules import default_blog_prompt
 from app.agents.marketing.postprocess import postprocess_blog
 from app.agents.marketing.schemas import BlogDraft, BlogGenInput, StoreContext
 from app.agents.prompts import fence_user_input
@@ -19,8 +19,7 @@ def _store_context_block(ctx: StoreContext | None) -> str:
     lines: list[str] = []
     if ctx.shop_name:
         lines.append(f"- 상호: {ctx.shop_name}")
-    if ctx.avg_order_value:
-        lines.append(f"- 평균 객단가: {ctx.avg_order_value:,}원")
+    # 객단가(평균 금액)는 프롬프트에 넣지 않는다 — 초안에 가격·금액이 노출되지 않도록.
     if ctx.upcoming_season:
         lines.append(f"- 다가오는 시즌: {ctx.upcoming_season}")
     if ctx.top_products:
@@ -37,6 +36,13 @@ class BlogChannel:
         return BlogDraft
 
     def build_messages(self, gen_input: BlogGenInput) -> list:
+        # 정적 프롬프트 3조각: override 있는 것만 교체, 나머지는 geo_rules 기본값 폴백.
+        base = default_blog_prompt()
+        ov = gen_input.prompt_override
+        system_md = ov.system_md if ov and ov.system_md else base["system_md"]
+        rules_md = ov.rules_md if ov and ov.rules_md else base["rules_md"]
+        output_spec_md = ov.output_spec_md if ov and ov.output_spec_md else base["output_spec_md"]
+
         instruction_parts = ["다음 조건으로 네이버 블로그 초안을 작성하세요."]
 
         # 말투 샘플을 GEO 규칙보다 '먼저' + 강조해 제시한다 — 문체 모방이 핵심이라
@@ -52,7 +58,7 @@ class BlogChannel:
             for i, sample in enumerate(samples, start=1):
                 instruction_parts.append(f"[말투 샘플 {i}]\n" + fence_user_input(sample))
 
-        instruction_parts.append(GEO_RULES)
+        instruction_parts.append(rules_md)
         instruction_parts.append("[타깃 검색 키워드]\n" + fence_user_input(gen_input.keyword))
         if gen_input.situation:
             instruction_parts.append("[상황/시즌]\n" + fence_user_input(gen_input.situation))
@@ -63,13 +69,13 @@ class BlogChannel:
         if store_block:
             instruction_parts.append(store_block)
 
-        instruction_parts.append(OUTPUT_SPEC)
+        instruction_parts.append(output_spec_md)
 
         content: list = [{"type": "text", "text": "\n\n".join(instruction_parts)}]
         for url in gen_input.photo_urls[:_MAX_PHOTOS]:
             content.append({"type": "image_url", "image_url": {"url": url}})
 
-        return [SystemMessage(content=BLOG_SYSTEM), HumanMessage(content=content)]
+        return [SystemMessage(content=system_md), HumanMessage(content=content)]
 
     def postprocess(self, draft: BaseModel, gen_input: BlogGenInput) -> BaseModel:
         if not isinstance(draft, BlogDraft):

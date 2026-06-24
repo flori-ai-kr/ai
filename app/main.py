@@ -16,6 +16,7 @@ from app.backend.auth import Authenticator
 from app.backend.client import BackendClient
 from app.confirm.store import PendingWriteStore
 from app.core.config import get_settings
+from app.core.logging_config import configure_logging
 from app.core.usage import UsageLimiter
 from app.session.store import SessionStore
 from app.voice.aws import PollyTts, TranscribeStt
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(title="Flori AI", version="0.1.0", lifespan=lifespan)
     app.include_router(health.router)
     app.include_router(whoami.router)

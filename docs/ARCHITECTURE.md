@@ -51,7 +51,7 @@ flowchart LR
 | `POST /voice/turn` | **C1** 음성 푸시투토크 | ✓ | ✗ | `app/api/voice.py` |
 | `WS /voice/stream` | **C2** 실시간 음성(WebSocket) | ✓(토큰) | ✗ | `app/api/voice_ws.py` |
 | `GET /agent/proactive` | **D** 선제 제안 | ✓ | ✗ | `app/api/proactive.py` |
-| `POST /marketing/blog` | **M** 사진+키워드 → 네이버 GEO 블로그 초안 | ✓ | ✗ | `app/api/marketing.py` |
+| `POST /marketing/blog` | **M** 사진+키워드 → 네이버 GEO 블로그 초안. optional `prompt_override`(게이트웨이가 DB active 프롬프트·모델·temp 주입, 없으면 `geo_rules.py` 폴백 — SPEC-AI-008) | ✓ | ✗ | `app/api/marketing.py` |
 
 ## 3. 모듈 구조
 

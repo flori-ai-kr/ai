@@ -2,6 +2,27 @@
 
 > 직전 세션의 상태와 다음 할 일. 세션 시작 시 이 파일 + ROADMAP.md를 먼저 읽는다.
 
+## 현재 상태 (2026-06-24) — SPEC-AI-008 프롬프트 레지스트리 + 슈퍼어드민 콘솔
+
+**3 repo 워크트리(`session3-prompt-registry`, dev 기준)에서 구현 완료. 11 task 전부 커밋.**
+
+- **ai** (`ai-session3-prompt-registry`): `prompt_override` seam — `PromptOverride` 스키마 → `geo_rules.default_blog_prompt()` 함수화 → `blog.py` 부분적용 폴백 → `/marketing/blog`에 override 수용 + model/temp 동적 빌드. **121 passed, ruff clean.**
+- **api** (`api-session3-prompt-registry`): `ai_prompt` DDL(채널당 active 1개 partial unique)+rollback → `AiPrompt` 엔티티/리포 → `PromptResolver`(active 5분캐시+폴백) → `MarketingService` 주입 → `AdminPromptService`(CRUD·활성화 @Transactional 불변식·active삭제거부·모델 화이트리스트) → `AdminPromptController`(`/admin/prompts/*` @RequiresAdmin + preview). `PromptModels` 화이트리스트 공유. `TenantIsolationGuard`에 `AiPromptRepository`(의도적 전역) 등록. **624 passed, ktlint clean.**
+- **web** (`web-session3-prompt-registry`): `types/admin-prompt.ts` + `lib/actions/admin-prompts.ts`(7액션) + `(console)/console/prompts` 목록·편집·신규(clone)·플레이그라운드 + 콘솔 사이드바 "AI > 프롬프트". **605 passed, lint 0 errors, tsc clean.**
+
+### 이 세션 추가 작업(SPEC-008 브랜치, 위 11 task 이후)
+- **시드 마이그레이션**: `api .../docs/sql/migration/26-06-24-ai-prompt-seed-blog-v1.sql` — geo_rules.py 기본 프롬프트를 blog v1 active로 INSERT(멱등). 콘솔 기본값 즉시 편집용.
+- **ai 스텝 로깅**: `flori.marketing` 로거로 마케팅 생성 단계 로그(📥요청→🧩override→🤖모델→🧱프롬프트 전문→🪄구조화/폴백→✅완료). `app/core/logging_config.py`.
+- **콘솔 UI 개선**: 프롬프트 목록 액션 sticky·아이콘/토글화·메모 신축 칼럼, 편집기 플레이그라운드 sticky·입력칸 축소. web 마케팅 로딩 문구 "약 15초" 제거.
+- **detekt 수정**: `AdminPromptService` create/update 순환복잡도 완화(헬퍼 분리). ⚠️ api 게이트는 `ktlintCheck test`가 아니라 **`./gradlew build`(detekt 포함)**로 잡을 것.
+
+### 다음 할 일
+- **DB 마이그레이션 적용(수동·승인 후)**: `26-06-21-ai-prompt.sql`(DDL — `ddl-auto=validate`라 서버 부팅 전 필수) → `26-06-24-ai-prompt-seed-blog-v1.sql`(시드, 선택).
+- **PR**: 3 repo `/feature-finalize`로 dev에 PR→CI(머지는 별도 지시). SPEC-007은 이미 dev 머지됨.
+- **SPEC-AI-009(비동기 생성 + 완료 알림)**: 설계 문서화 완료(`docs/specs/SPEC-AI-009.md`, ROADMAP TODO). 풀스코프(비동기 @Async + status + 범용 인앱 알림 + 웹푸시). **별도 브랜치/세션에서 구현** — 미착수.
+
+---
+
 ## 현재 상태 (2026-06-04) — best-practice 개선 세션 (improve/ai-best-practice)
 
 **프롬프트 팩 §4 ai 4축을 가이드 세션(자율 일괄)으로 처리. dev 기준 워크트리 `improve/ai-best-practice`.**

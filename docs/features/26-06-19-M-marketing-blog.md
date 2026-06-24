@@ -51,5 +51,13 @@
 - 스트리밍(SSE) = 긴 출력 UX 후속
 - 크레딧 원장(N1) = `AiUsageGuard` 캡 → 원장 차감으로 교체
 
+## 프롬프트 레지스트리 (SPEC-AI-008)
+
+마케팅 프롬프트의 **정적 부분**(시스템·GEO규칙·출력스펙·모델·temperature)을 코드 상수에서 DB(`ai_prompt`)로 이관해, 재배포 없이 슈퍼어드민 콘솔에서 튜닝한다. **동적 데이터**(키워드·말투샘플·매장맥락)는 기존대로 게이트웨이가 코드로 주입한다.
+
+- **ai-server seam**: `POST /marketing/blog`에 optional `prompt_override{system_md, rules_md, output_spec_md, model, temperature}`. 있는 조각만 교체(부분 적용), 없으면 `geo_rules.py` 기본값 폴백. `model`/`temperature` override 시 요청 단위로 모델 재빌드(`build_chat_model`). **DB가 비어도 블로그 생성은 정상 동작**(폴백 불변식).
+- **게이트웨이(api)**: `ai_prompt` 테이블(채널당 active 1개 — partial unique index). `PromptResolver`가 active를 5분 캐시로 로드해 생성 요청에 주입. 콘솔 `/admin/prompts/*`(`@RequiresAdmin`) CRUD·활성화(@Transactional 불변식)·삭제(active 거부)·플레이그라운드 `POST /admin/prompts/preview`(저장 안 함). 모델 화이트리스트(`claude-haiku-4-5`·`claude-sonnet-4-6`).
+- **web 콘솔**: `(console)/console/prompts` 목록·편집(`[id]`)·신규(clone)·플레이그라운드 패널. 사이드바 "AI > 프롬프트".
+
 ## 테스트
-ai: `test_marketing_{postprocess,generator,api}.py` (15) — 구조화/폴백·펜스·SSRF·후처리 불변식·키워드만 생성. `uv run ruff check . && uv run pytest` → **115 통과**.
+ai: `test_marketing_{postprocess,generator,api}.py` + `test_marketing_prompt_override.py` — 구조화/폴백·펜스·SSRF·후처리 불변식·키워드만 생성·prompt_override 부분적용·모델/temp 동적빌드. `uv run ruff check . && uv run pytest` → **121 통과**.
