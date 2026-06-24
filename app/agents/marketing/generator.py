@@ -22,10 +22,10 @@ class MarketingGenerationError(Exception):
     """LLM에서 구조화된 마케팅 초안을 생성하지 못함."""
 
 
-def _prompt_preview(messages: list) -> tuple[str, int]:
-    """조립된 메시지에서 시스템 프롬프트 전문과 지시문(텍스트) 길이를 뽑는다(로그용)."""
+def _prompt_texts(messages: list) -> tuple[str, str]:
+    """조립된 메시지에서 시스템 프롬프트 전문과 지시문(Human 텍스트 전문)을 뽑는다(로그용)."""
     system = ""
-    instruction_len = 0
+    instruction = ""
     for message in messages:
         content = getattr(message, "content", "")
         name = type(message).__name__
@@ -33,14 +33,12 @@ def _prompt_preview(messages: list) -> tuple[str, int]:
             system = content
         elif name == "HumanMessage":
             if isinstance(content, list):
-                instruction_len = sum(
-                    len(part.get("text", ""))
-                    for part in content
-                    if isinstance(part, dict) and part.get("type") == "text"
+                instruction = "\n".join(
+                    part.get("text", "") for part in content if isinstance(part, dict) and part.get("type") == "text"
                 )
             elif isinstance(content, str):
-                instruction_len = len(content)
-    return system, instruction_len
+                instruction = content
+    return system, instruction
 
 
 def _extract_json(text: str) -> dict:
@@ -82,15 +80,18 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
     schema = channel.output_schema()
     messages = channel.build_messages(gen_input)
 
-    system, instruction_len = _prompt_preview(messages)
+    system, instruction = _prompt_texts(messages)
     _step.info(
-        "🧱 프롬프트 조립 완료 | 채널=%s · 시스템 %d자 · 지시문 %d자 · 시스템 미리보기: %s…",
+        "🧱 프롬프트 조립 완료 | 채널=%s · 시스템 %d자 · 지시문 %d자\n"
+        "──────── [SYSTEM 프롬프트] ────────\n%s\n"
+        "──────── [지시문 / HUMAN] ────────\n%s\n"
+        "──────────────────────────────────",
         channel_name,
         len(system),
-        instruction_len,
-        system[:120].replace("\n", " ⏎ "),
+        len(instruction),
+        system,
+        instruction,
     )
-    _step.debug("🧱 시스템 프롬프트 전문:\n%s", system)
 
     draft = await _try_structured(model, messages, schema)
     if draft is None:
