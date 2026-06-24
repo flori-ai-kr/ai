@@ -2,6 +2,21 @@
 
 > 직전 세션의 상태와 다음 할 일. 세션 시작 시 이 파일 + ROADMAP.md를 먼저 읽는다.
 
+## 현재 상태 (2026-06-24) — SPEC-AI-008 프롬프트 레지스트리 + 슈퍼어드민 콘솔
+
+**3 repo 워크트리(`session3-prompt-registry`, dev 기준)에서 구현 완료. 11 task 전부 커밋.**
+
+- **ai** (`ai-session3-prompt-registry`): `prompt_override` seam — `PromptOverride` 스키마 → `geo_rules.default_blog_prompt()` 함수화 → `blog.py` 부분적용 폴백 → `/marketing/blog`에 override 수용 + model/temp 동적 빌드. **121 passed, ruff clean.**
+- **api** (`api-session3-prompt-registry`): `ai_prompt` DDL(채널당 active 1개 partial unique)+rollback → `AiPrompt` 엔티티/리포 → `PromptResolver`(active 5분캐시+폴백) → `MarketingService` 주입 → `AdminPromptService`(CRUD·활성화 @Transactional 불변식·active삭제거부·모델 화이트리스트) → `AdminPromptController`(`/admin/prompts/*` @RequiresAdmin + preview). `PromptModels` 화이트리스트 공유. `TenantIsolationGuard`에 `AiPromptRepository`(의도적 전역) 등록. **624 passed, ktlint clean.**
+- **web** (`web-session3-prompt-registry`): `types/admin-prompt.ts` + `lib/actions/admin-prompts.ts`(7액션) + `(console)/console/prompts` 목록·편집·신규(clone)·플레이그라운드 + 콘솔 사이드바 "AI > 프롬프트". **605 passed, lint 0 errors, tsc clean.**
+
+### 다음 할 일
+- **DB 마이그레이션 적용(수동·승인 후)**: `api .../docs/sql/migration/26-06-21-ai-prompt.sql` — 폴백이 있어 적용 전에도 동작하나, 콘솔에서 active 저장하려면 필요.
+- **PR**: 3 repo `/feature-finalize`로 dev에 PR→CI(머지는 별도 지시). SPEC-007은 이미 dev 머지됨.
+- 시드(선택): 현재 `geo_rules.py` 내용을 `blog` 채널 `v1 active`로 시드하면 콘솔에서 기본값을 바로 편집 가능.
+
+---
+
 ## 현재 상태 (2026-06-04) — best-practice 개선 세션 (improve/ai-best-practice)
 
 **프롬프트 팩 §4 ai 4축을 가이드 세션(자율 일괄)으로 처리. dev 기준 워크트리 `improve/ai-best-practice`.**

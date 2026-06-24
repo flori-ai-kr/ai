@@ -30,8 +30,8 @@
 
 | SPEC | status | deps | 범위 |
 |------|--------|------|------|
-| SPEC-AI-007 | DOING | 001, 003 | **M2 네이버 블로그 초안 AI**: 사진+키워드 → 네이버 GEO 최적화 블로그 초안(제목·소제목 단락·FAQ·해시태그). 말투 few-shot(게이트웨이 저장 프로파일) + 매장 실데이터 자동주입(코드 조립) + 채널 추상화(`channels/`, blog만 등록—인스타·스레드 확장 seam) + 지시대명사 후처리. ai-server `POST /marketing/blog` **115 tests 통과**. 게이트웨이/web 진행 중. |
-| SPEC-AI-008 | TODO | 007 | **프롬프트 레지스트리 + 슈퍼어드민 콘솔**: 마케팅 프롬프트(시스템·GEO규칙·출력스펙)·모델·temp를 코드 상수→DB(`ai_prompt`)로 이관. ai-server `prompt_override` seam(폴백 유지) + 게이트웨이 CRUD·활성화·맥락주입·preview + web `(console)/console/prompts`(편집·버전·활성화·플레이그라운드). 재배포 없이 말투 튜닝. |
+| SPEC-AI-007 | DONE | 001, 003 | **M2 네이버 블로그 초안 AI**: 사진+키워드 → 네이버 GEO 최적화 블로그 초안(제목·소제목 단락·FAQ·해시태그). 말투 few-shot(게이트웨이 저장 프로파일) + 매장 실데이터 자동주입(코드 조립) + 채널 추상화(`channels/`, blog만 등록—인스타·스레드 확장 seam) + 지시대명사 후처리. ai-server `POST /marketing/blog`. 게이트웨이/web 포함 3 repo dev 머지 완료. |
+| SPEC-AI-008 | DONE | 007 | **프롬프트 레지스트리 + 슈퍼어드민 콘솔**: 마케팅 프롬프트(시스템·GEO규칙·출력스펙)·모델·temp를 코드 상수→DB(`ai_prompt`)로 이관. ai-server `prompt_override` seam(부분적용·폴백 유지) + 게이트웨이 `PromptResolver`(active 5분캐시) 주입 + `/admin/prompts` CRUD·활성화 불변식·플레이그라운드 preview + web `(console)/console/prompts`(편집·버전·활성화·플레이그라운드). 재배포 없이 말투 튜닝. 검증: ai 121 / api 624 / web 605 통과. |
 
 ## 진행 규칙
 - 한 세션은 SPEC을 **하나씩** 끝낸다(lint·테스트·커밋까지). 그 후 다음 TODO로.
