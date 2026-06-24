@@ -42,6 +42,12 @@ OUTPUT_SPEC = """다음 JSON 객체로만 답하세요(설명/문장 금지):
 {"title": 문자열, "sections": [{"heading": 문자열, "body": 문자열}],
  "faq": [{"q": 문자열, "a": 문자열}], "hashtags": [문자열]}"""
 
+
+def default_blog_prompt() -> dict[str, str]:
+    """코드 기본 프롬프트 3조각. DB override 미제공 시 폴백(SPEC-AI-008)."""
+    return {"system_md": BLOG_SYSTEM, "rules_md": GEO_RULES, "output_spec_md": OUTPUT_SPEC}
+
+
 # 후처리에서 치환/제거할 금지 지시대명사
 BANNED_DEMONSTRATIVES = (
     "이 가게",
