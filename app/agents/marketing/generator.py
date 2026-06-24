@@ -81,17 +81,17 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
     messages = channel.build_messages(gen_input)
 
     system, instruction = _prompt_texts(messages)
+    # SYSTEM(설정 프롬프트, 비PII)은 INFO 전문 노출. 지시문(키워드·상황·메모·말투샘플 등
+    # 사용자 입력 포함 — PII 가능)은 DEBUG로만 — 운영 로그 수집 경로에 PII가 적재되지 않게.
     _step.info(
         "🧱 프롬프트 조립 완료 | 채널=%s · 시스템 %d자 · 지시문 %d자\n"
-        "──────── [SYSTEM 프롬프트] ────────\n%s\n"
-        "──────── [지시문 / HUMAN] ────────\n%s\n"
-        "──────────────────────────────────",
+        "──────── [SYSTEM 프롬프트] ────────\n%s\n──────────────────────────────────",
         channel_name,
         len(system),
         len(instruction),
         system,
-        instruction,
     )
+    _step.debug("🧱 [지시문/HUMAN 전문]\n%s", instruction)
 
     draft = await _try_structured(model, messages, schema)
     if draft is None:
