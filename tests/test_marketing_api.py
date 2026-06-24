@@ -72,6 +72,51 @@ async def test_blog_endpoint_rejects_empty_keyword():
     assert r.status_code == 422
 
 
+async def test_blog_endpoint_accepts_text_prompt_override():
+    # 텍스트 override(system_md)만 → 모델 재빌드 없이 주입 모델 사용, 프롬프트에 반영
+    captured = {}
+
+    class _Capturing(_StructuredModel):
+        async def ainvoke(self, messages):
+            captured["messages"] = str(messages)
+            return self._draft
+
+    app = _app_with_model(_Capturing(_valid_draft()))
+    async with _client(app) as c:
+        r = await c.post(
+            "/marketing/blog",
+            json={"keyword": "장미", "prompt_override": {"system_md": "<<CUSTOM SYS>>"}},
+        )
+    assert r.status_code == 200, r.text
+    assert "<<CUSTOM SYS>>" in captured["messages"]
+
+
+async def test_blog_endpoint_override_model_and_temp_rebuilds_model(monkeypatch):
+    # model/temperature override → build_chat_model로 요청 단위 재빌드(인수기준 3)
+    captured = {}
+    mock = _StructuredModel(_valid_draft())
+
+    def _fake_build(settings, *, model=None, temperature=0.0):
+        captured["model"] = model
+        captured["temperature"] = temperature
+        return mock
+
+    monkeypatch.setattr("app.api.marketing.build_chat_model", _fake_build)
+    app = _app_with_model(_StructuredModel(_valid_draft()))
+    async with _client(app) as c:
+        r = await c.post(
+            "/marketing/blog",
+            json={
+                "keyword": "장미",
+                "prompt_override": {"model": "claude-sonnet-4-6", "temperature": 0.3},
+            },
+        )
+    assert r.status_code == 200, r.text
+    assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["temperature"] == 0.3
+    assert r.json()["model"] == "claude-sonnet-4-6"
+
+
 async def test_blog_endpoint_passes_store_context_and_tone():
     captured = {}
 

@@ -8,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field, field_validator
 
+from app.agents.llm_client import build_chat_model
 from app.agents.marketing.generator import MarketingGenerationError, generate
-from app.agents.marketing.schemas import BlogDraft, BlogGenInput, StoreContext
+from app.agents.marketing.schemas import BlogDraft, BlogGenInput, PromptOverride, StoreContext
 from app.api.deps import get_marketing_chat_model, get_request_context, get_settings
 from app.api.validators import validate_http_image_url
 from app.backend.auth import RequestContext
@@ -28,6 +29,16 @@ class StoreContextIn(BaseModel):
     top_products: list[str] = Field(default_factory=list, max_length=10)
 
 
+class PromptOverrideIn(BaseModel):
+    """게이트웨이(어드민 인증 통과)만 보내는 DB active 프롬프트 오버라이드. 부분 적용."""
+
+    system_md: str | None = Field(None, max_length=20000)
+    rules_md: str | None = Field(None, max_length=20000)
+    output_spec_md: str | None = Field(None, max_length=4000)
+    model: str | None = Field(None, max_length=64)
+    temperature: float | None = Field(None, ge=0.0, le=2.0)
+
+
 class MarketingBlogRequest(BaseModel):
     channel: str = "blog"
     keyword: str = Field(..., min_length=1, max_length=200)
@@ -37,6 +48,7 @@ class MarketingBlogRequest(BaseModel):
     tone_samples: list[str] = Field(default_factory=list, max_length=_MAX_TONE_SAMPLES)
     store_context: StoreContextIn | None = None
     model: str | None = None  # 게이트웨이 힌트(현재는 ai-server 설정 모델 사용)
+    prompt_override: PromptOverrideIn | None = None
 
     @field_validator("photo_urls")
     @classmethod
@@ -64,6 +76,7 @@ async def marketing_blog(
     model: BaseChatModel = Depends(get_marketing_chat_model),
     settings: Settings = Depends(get_settings),
 ) -> MarketingBlogResponse:
+    ov = req.prompt_override
     gen_input = BlogGenInput(
         keyword=req.keyword,
         situation=req.situation,
@@ -71,7 +84,19 @@ async def marketing_blog(
         tone_samples=req.tone_samples,
         store_context=StoreContext(**req.store_context.model_dump()) if req.store_context else None,
         photo_urls=req.photo_urls,
+        prompt_override=PromptOverride(**ov.model_dump()) if ov else None,
     )
+
+    # model/temperature override 시 요청 단위로 모델을 재빌드(없으면 주입된 마케팅 모델 사용).
+    used_model = settings.marketing_model or settings.llm_model
+    if ov and (ov.model or ov.temperature is not None):
+        used_model = ov.model or used_model
+        model = build_chat_model(
+            settings,
+            model=used_model,
+            temperature=ov.temperature if ov.temperature is not None else settings.marketing_temperature,
+        )
+
     try:
         draft = await generate(model, req.channel, gen_input)
     except MarketingGenerationError:
@@ -79,4 +104,4 @@ async def marketing_blog(
 
     if not isinstance(draft, BlogDraft):
         raise HTTPException(status_code=500, detail="생성 오류")
-    return MarketingBlogResponse(draft=draft, model=settings.marketing_model or settings.llm_model)
+    return MarketingBlogResponse(draft=draft, model=used_model)
