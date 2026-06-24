@@ -19,8 +19,7 @@ def _store_context_block(ctx: StoreContext | None) -> str:
     lines: list[str] = []
     if ctx.shop_name:
         lines.append(f"- 상호: {ctx.shop_name}")
-    if ctx.avg_order_value:
-        lines.append(f"- 평균 객단가: {ctx.avg_order_value:,}원")
+    # 객단가(평균 금액)는 프롬프트에 넣지 않는다 — 초안에 가격·금액이 노출되지 않도록.
     if ctx.upcoming_season:
         lines.append(f"- 다가오는 시즌: {ctx.upcoming_season}")
     if ctx.top_products:
