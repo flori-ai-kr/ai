@@ -117,6 +117,19 @@ async def test_blog_endpoint_override_model_and_temp_rebuilds_model(monkeypatch)
     assert r.json()["model"] == "claude-sonnet-4-6"
 
 
+async def test_blog_endpoint_logs_generation_steps(caplog):
+    # 스텝 로그(📥 요청 수신 → ✅ 생성 완료)가 flori.marketing 로거로 남는지 가드
+    app = _app_with_model(_StructuredModel(_valid_draft()))
+    with caplog.at_level("INFO", logger="flori.marketing"):
+        async with _client(app) as c:
+            r = await c.post("/marketing/blog", json={"keyword": "장미"})
+    assert r.status_code == 200, r.text
+    blob = "\n".join(caplog.messages)
+    assert "블로그 생성 요청 수신" in blob  # 📥
+    assert "프롬프트 조립 완료" in blob  # 🧱
+    assert "블로그 초안 생성 완료" in blob  # ✅
+
+
 async def test_blog_endpoint_passes_store_context_and_tone():
     captured = {}
 

@@ -15,10 +15,32 @@ from app.agents.marketing.schemas import BlogDraft, BlogGenInput
 from app.observability.tracing import observe
 
 _log = logging.getLogger(__name__)
+_step = logging.getLogger("flori.marketing")  # 사람이 읽는 스텝 로그(이모지)
 
 
 class MarketingGenerationError(Exception):
     """LLM에서 구조화된 마케팅 초안을 생성하지 못함."""
+
+
+def _prompt_preview(messages: list) -> tuple[str, int]:
+    """조립된 메시지에서 시스템 프롬프트 전문과 지시문(텍스트) 길이를 뽑는다(로그용)."""
+    system = ""
+    instruction_len = 0
+    for message in messages:
+        content = getattr(message, "content", "")
+        name = type(message).__name__
+        if name == "SystemMessage" and isinstance(content, str):
+            system = content
+        elif name == "HumanMessage":
+            if isinstance(content, list):
+                instruction_len = sum(
+                    len(part.get("text", ""))
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                )
+            elif isinstance(content, str):
+                instruction_len = len(content)
+    return system, instruction_len
 
 
 def _extract_json(text: str) -> dict:
@@ -60,8 +82,19 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
     schema = channel.output_schema()
     messages = channel.build_messages(gen_input)
 
+    system, instruction_len = _prompt_preview(messages)
+    _step.info(
+        "🧱 프롬프트 조립 완료 | 채널=%s · 시스템 %d자 · 지시문 %d자 · 시스템 미리보기: %s…",
+        channel_name,
+        len(system),
+        instruction_len,
+        system[:120].replace("\n", " ⏎ "),
+    )
+    _step.debug("🧱 시스템 프롬프트 전문:\n%s", system)
+
     draft = await _try_structured(model, messages, schema)
     if draft is None:
+        _step.info("🪄 구조화 출력 미지원/실패 → JSON 폴백 파싱 시도")
         ai = await model.ainvoke(messages)
         raw = ai.content if isinstance(ai.content, str) else str(ai.content)
         try:
@@ -69,6 +102,8 @@ async def generate(model: BaseChatModel, channel_name: str, gen_input: BlogGenIn
         except (json.JSONDecodeError, ValidationError, ValueError, TypeError) as exc:
             _log.warning("marketing draft fallback parse failed: %s (raw[:200]=%s)", exc, raw[:200])
             raise MarketingGenerationError("could not generate marketing draft") from exc
+    else:
+        _step.info("🪄 구조화 출력 성공(스키마 강제)")
 
     return channel.postprocess(draft, gen_input)
 
