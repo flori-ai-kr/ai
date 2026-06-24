@@ -12,6 +12,16 @@ class StoreContext(BaseModel):
     top_products: list[str] = Field(default_factory=list)
 
 
+class PromptOverride(BaseModel):
+    """게이트웨이가 DB active 프롬프트를 주입하는 오버라이드. 부분 적용(있는 것만 교체)."""
+
+    system_md: str | None = None
+    rules_md: str | None = None
+    output_spec_md: str | None = None
+    model: str | None = None
+    temperature: float | None = None
+
+
 class BlogGenInput(BaseModel):
     """블로그 초안 생성 입력. 사용자 텍스트는 생성기에서 펜스로 격리한다."""
 
@@ -21,6 +31,7 @@ class BlogGenInput(BaseModel):
     tone_samples: list[str] = Field(default_factory=list)  # 사장 블로그 샘플(말투 few-shot)
     store_context: StoreContext | None = None
     photo_urls: list[str] = Field(default_factory=list)
+    prompt_override: PromptOverride | None = None
 
 
 class BlogSection(BaseModel):
