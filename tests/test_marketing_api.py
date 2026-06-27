@@ -1,4 +1,9 @@
+import io
+import os
+
 import httpx
+import respx
+from PIL import Image
 
 from app.agents.marketing.schemas import BlogDraft, BlogFaq, BlogSection
 from app.api.deps import get_marketing_chat_model, get_request_context
@@ -8,6 +13,28 @@ from app.main import create_app
 
 def _client(app) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+def _noise_jpeg(width: int, height: int) -> bytes:
+    img = Image.frombytes("RGB", (width, height), os.urandom(width * height * 3))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    return buf.getvalue()
+
+
+class _CapturingModel:
+    """ainvoke로 들어온 messages를 문자열로 포착하는 테스트 모델."""
+
+    def __init__(self, draft: BlogDraft) -> None:
+        self._draft = draft
+        self.captured = ""
+
+    def with_structured_output(self, schema):
+        return self
+
+    async def ainvoke(self, messages):
+        self.captured = str(messages)
+        return self._draft
 
 
 def _valid_draft() -> BlogDraft:
@@ -151,3 +178,35 @@ async def test_blog_endpoint_passes_store_context_and_tone():
     assert r.status_code == 200, r.text
     assert "플로리" in captured["messages"]
     assert "내 블로그 말투" in captured["messages"]
+
+
+@respx.mock
+async def test_blog_endpoint_passes_small_photo_url_through():
+    # 한도 이하 사진 → 원본 URL 그대로 모델에 전달(현행 동작 유지)
+    url = "https://cdn.example.com/small.jpg"
+    respx.head(url).mock(return_value=httpx.Response(200, headers={"Content-Length": "1234"}))
+    model = _CapturingModel(_valid_draft())
+    app = _app_with_model(model)
+    async with _client(app) as c:
+        r = await c.post("/marketing/blog", json={"keyword": "장미", "photo_urls": [url]})
+    assert r.status_code == 200, r.text
+    assert url in model.captured
+    assert "data:image" not in model.captured
+
+
+@respx.mock
+async def test_blog_endpoint_shrinks_oversized_photo_to_data_url(monkeypatch):
+    # 한도 초과 사진 → 다운로드·축소 후 data URL로 교체(원본 URL은 모델에 전달되지 않음)
+    monkeypatch.setattr("app.api.marketing.MAX_IMAGE_BYTES", 1000)
+    url = "https://cdn.example.com/big.jpg"
+    body = _noise_jpeg(300, 300)
+    assert len(body) > 1000
+    respx.head(url).mock(return_value=httpx.Response(200, headers={"Content-Length": str(len(body))}))
+    respx.get(url).mock(return_value=httpx.Response(200, content=body))
+    model = _CapturingModel(_valid_draft())
+    app = _app_with_model(model)
+    async with _client(app) as c:
+        r = await c.post("/marketing/blog", json={"keyword": "장미", "photo_urls": [url]})
+    assert r.status_code == 200, r.text
+    assert "data:image/jpeg;base64," in model.captured
+    assert url not in model.captured

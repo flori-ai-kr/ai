@@ -6,12 +6,14 @@
 
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, Field, field_validator
 
 from app.agents.llm_client import build_chat_model
 from app.agents.marketing.generator import MarketingGenerationError, generate
+from app.agents.marketing.images import MAX_IMAGE_BYTES, normalize_image_urls
 from app.agents.marketing.schemas import BlogDraft, BlogGenInput, PromptOverride, StoreContext
 from app.api.deps import get_marketing_chat_model, get_request_context, get_settings
 from app.api.validators import validate_http_image_url
@@ -105,13 +107,21 @@ async def marketing_blog(
     else:
         _log.info("🧩 prompt_override 없음 → ai 코드 기본 프롬프트(geo_rules.py) 폴백 사용")
 
+    # Bedrock Claude는 이미지 1장당 5MB 하드 리밋이 있다. 폰 원본 사진은 이를 쉽게 넘겨
+    # 생성 전체가 400으로 실패하므로, 한도를 넘는 사진만 다운로드·축소해 data URL로 교체한다
+    # (한도 이하는 원본 URL 그대로 통과 — 현행 동작·화질 유지). 리다이렉트 미추적(SSRF 방어).
+    photo_refs = req.photo_urls
+    if photo_refs:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(15.0), follow_redirects=False) as http_client:
+            photo_refs = await normalize_image_urls(photo_refs, client=http_client, max_bytes=MAX_IMAGE_BYTES)
+
     gen_input = BlogGenInput(
         keyword=req.keyword,
         situation=req.situation,
         memo=req.memo,
         tone_samples=req.tone_samples,
         store_context=StoreContext(**req.store_context.model_dump()) if req.store_context else None,
-        photo_urls=req.photo_urls,
+        photo_urls=photo_refs,
         prompt_override=PromptOverride(**ov.model_dump()) if ov else None,
     )
 
