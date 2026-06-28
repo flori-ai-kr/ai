@@ -9,7 +9,7 @@
 
 | 항목 | status | 비고 |
 |------|--------|------|
-| docs/DESIGN.md | DOING | 전체 아키텍처·보안 모델·도구 카탈로그·대화 세션·시퀀싱. **사용자 승인 게이트** — 승인 전 구현 착수 금지 |
+| docs/DESIGN.md | DONE | 전체 아키텍처·보안 모델·도구 카탈로그·대화 세션·시퀀싱. **사용자 승인 완료(2026-05-25)** |
 
 ## Phase 1 — 기반 & 기능 (시퀀싱)
 
@@ -17,17 +17,27 @@
 
 | SPEC | status | deps | 범위 |
 |------|--------|------|------|
-| SPEC-AI-001 | TODO | DESIGN 승인 | **Foundation**: FastAPI+LangGraph 스켈레톤, 유저 JWT 검증/전달 인증(`/me` 인트로스펙션 + 패스스루), 백엔드 REST 도구 클라이언트(httpx, 재시도/타임아웃), LiteLLM 연동(Claude Haiku 4.5), Redis 세션(session_id+턴 추상화), 로컬 docker-compose(ai-server+redis), `/health`, 유저별 사용량 캡 자리, AI 행위 감사 로깅, `.env.example`, pyproject(uv)·ruff·pytest |
-| SPEC-AI-002 | TODO | 001 | **A 데이터 분석 (읽기전용)**: 통계/대시보드 읽기 도구(`/dashboard/month`, `/dashboard/today`, `/sales`, `/customers` 등 래퍼) + 도구콜 루프 + "이번 달 매출 왜 떨어졌어?" 류 질의에 LLM 해설. 쓰기 없음 — 도구콜 루프 검증의 기준점 |
-| SPEC-AI-003 | TODO | 001, 002 | **B OCR→예약**: 이미지(카톡 스크린샷) 입력 → 비전 LLM(Haiku 4.5)로 고객·날짜·시간·품목·금액 추출 → 예약 후보 DTO → **확인 카드(human-in-loop)** → 확인 시 `find-or-create` 고객 + `POST /reservations`. 추출 검증·날짜 파싱·중복 방지 |
-| SPEC-AI-004 | TODO | 001, 003 | **C1 음성 푸시투토크**: STT(확정 예정) → 텍스트 → 에이전트 도구 호출 → 응답 텍스트 → TTS. HTTP/SSE 전송. 대화 세션 추상화 위에서 동작. STT/TTS 프로바이더 추상화(교체 가능) |
-| SPEC-AI-005 | TODO | 004 | **C2 실시간 음성**: WebSocket/WebRTC 전송으로 교체(전송계층만). 세션·턴 추상화 재사용. 부분 인식·바지인(barge-in) 고려 |
-| SPEC-AI-006 | TODO | 002, 003, 004 | **D 에이전트 확장**: A·B·C 도구를 묶은 다단계 에이전트 + 선제 제안(예: "내일 예약 3건, 리마인더 보낼까요?"). Langfuse 트레이싱 도입 검토 |
+| SPEC-AI-001 | DONE | DESIGN 승인 | **Foundation**: FastAPI+LangGraph 스켈레톤, 유저 JWT 검증/전달 인증(`/me` 인트로스펙션 + 패스스루), 백엔드 REST 도구 클라이언트(httpx, 재시도/타임아웃), LiteLLM 연동(Claude Haiku 4.5), Redis 세션(session_id+턴 추상화), 로컬 docker-compose(ai-server+redis), `/health`, 유저별 사용량 캡 자리, AI 행위 감사 로깅, `.env.example`, pyproject(uv)·ruff·pytest. **28 tests 통과** |
+| SPEC-AI-002 | DONE | 001 | **A 데이터 분석 (읽기전용)**: 통계/대시보드 읽기 도구(`/dashboard/month`, `/dashboard/today`, `/sales`, `/customers` 래퍼) + ReAct 도구콜 루프 + `POST /chat`로 "이번 달 매출 왜 떨어졌어?" 류 LLM 해설. 쓰기 없음. **41 tests 통과** |
+| SPEC-AI-003 | DONE | 001, 002 | **B OCR→예약**: 이미지 → 비전 LLM(Haiku 4.5) 추출 → 예약 후보 → **확인 카드(human-in-loop)** `POST /ocr/reservation` → 확인 `POST /confirm` 시 `POST /reservations`. 쓰기는 confirm 경유만(에이전트 루프는 is_write 차단). proposal: user_id 바인딩·TTL·1회성. **65 tests 통과** |
+| SPEC-AI-004 | DONE | 001, 003 | **C1 음성 푸시투토크**: `POST /voice/turn`(audio base64) → STT(AWS Transcribe) → ReAct 에이전트(A 재사용) → TTS(AWS Polly) → 음성 응답. STT/TTS Port 추상화(교체 가능). 전송 HTTP. **77 tests 통과** |
+| SPEC-AI-005 | DONE | 004 | **C2 실시간 음성**: `WS /voice/stream`(WebSocket 전송) — `run_voice_turn` 재사용, 멀티턴·session_id sticky, 토큰 인증·오디오 누적 상한. WebRTC 및 서브-발화 실시간 partial/바지인은 인프라 필요 → 후속. **94 tests 통과** |
+| SPEC-AI-006 | DONE | 002, 003, 004 | **D 에이전트 확장**: 선제 제안 `GET /agent/proactive`(읽기 컨텍스트 → LLM 제안, fail-open) + Langfuse 관측성 seam(`@observe` no-op 폴백, `run_agent`/proactive 적용). 제안→실행은 confirm 경유 유지. **90 tests 통과** |
+
+## Phase 2 — 마케팅 (출시 헤드라인)
+
+> 교차 repo(ai·api·web). ai-server는 생성 엔진, api는 영속·맥락조립, web은 UX/UI.
+
+| SPEC | status | deps | 범위 |
+|------|--------|------|------|
+| SPEC-AI-007 | DONE | 001, 003 | **M2 네이버 블로그 초안 AI**: 사진+키워드 → 네이버 GEO 최적화 블로그 초안(제목·소제목 단락·FAQ·해시태그). 말투 few-shot(게이트웨이 저장 프로파일) + 매장 실데이터 자동주입(코드 조립) + 채널 추상화(`channels/`, blog만 등록—인스타·스레드 확장 seam) + 지시대명사 후처리. ai-server `POST /marketing/blog`. 게이트웨이/web 포함 3 repo dev 머지 완료. |
+| SPEC-AI-008 | DONE | 007 | **프롬프트 레지스트리 + 슈퍼어드민 콘솔**: 마케팅 프롬프트(시스템·GEO규칙·출력스펙)·모델·temp를 코드 상수→DB(`ai_prompt`)로 이관. ai-server `prompt_override` seam(부분적용·폴백 유지) + 게이트웨이 `PromptResolver`(active 5분캐시) 주입 + `/admin/prompts` CRUD·활성화 불변식·플레이그라운드 preview + web `(console)/console/prompts`(편집·버전·활성화·플레이그라운드). 재배포 없이 말투 튜닝. 검증: ai 121 / api 624 / web 605 통과. |
+| SPEC-AI-009 | TODO | 007, 008 | **비동기 블로그 생성 + 완료 알림**: 15~40초 생성을 백그라운드(@Async)로 돌려 무한대기 제거(나가도 결과 유지) + `ai_marketing_content.status`(생성중/완료/실패) + 범용 인앱 알림(`notifications` 신규) 헤더 벨 + 완료 웹푸시(기존 push 인프라 재사용). ai-server 변경 없음(api·web). 설계 완료: `docs/specs/SPEC-AI-009.md`. **별도 브랜치/세션에서 구현.** |
 
 ## 진행 규칙
 - 한 세션은 SPEC을 **하나씩** 끝낸다(lint·테스트·커밋까지). 그 후 다음 TODO로.
 - 의존성 미충족 SPEC은 건너뛰지 않고, 충족된 가장 앞 SPEC을 택한다.
-- 모든 SPEC은 `.moai/specs/<SPEC-ID>/spec.md`에 인수기준을 먼저 적고 구현한다.
+- 모든 SPEC은 `docs/specs/<SPEC-ID>.md`에 인수기준을 먼저 적고 구현한다.
 - **DESIGN 승인 전에는 어떤 구현 SPEC도 착수하지 않는다.**
 
 ## 결정 보류 (DESIGN에서 확정 / 추후)

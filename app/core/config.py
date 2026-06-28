@@ -1,0 +1,54 @@
+"""환경 변수 기반 설정. 평문 시크릿은 코드에 두지 않고 env로만 주입."""
+
+from functools import lru_cache
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """필드명이 곧 환경변수명(대소문자 무시). 예: ``llm_model`` ← ``LLM_MODEL``."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # LLM (LiteLLM 프록시 경유)
+    litellm_base_url: str = "http://localhost:4000"
+    litellm_api_key: str = ""
+    llm_model: str = "claude-haiku-4-5"
+
+    # 마케팅(블로그) 전용 모델 — 말투 모방 품질이 핵심이라 더 강한 모델 + 높은 temperature.
+    # 빈 값이면 llm_model로 폴백. temperature는 문체 다양성을 위해 0보다 크게(0=표준문체 수렴).
+    marketing_model: str = "claude-sonnet-4-6"
+    marketing_temperature: float = 0.7
+
+    # 백엔드 (Spring REST — 도구 대상)
+    backend_base_url: str = "http://localhost:8080"
+
+    # 게이트웨이 신뢰 내부키. Spring 게이트웨이가 X-Internal-Key로 보내며, 이 값과 일치해야 한다.
+    internal_key: str = ""
+
+    # Redis (세션·캡)
+    redis_url: str = "redis://localhost:6379/0"
+
+    # 인증 / 캡 / 타임아웃 / 세션
+    me_cache_ttl_seconds: int = 60
+    request_timeout_seconds: float = 30.0
+    usage_cap_per_day: int = 500
+    session_ttl_seconds: int = 86400
+    pending_ttl_seconds: int = 600  # 쓰기 제안(확인 카드) 유효시간
+
+    # 음성 (C — AWS Transcribe/Polly)
+    aws_region: str = "ap-northeast-2"
+    polly_voice: str = "Seoyeon"  # 한국어 음성
+    transcribe_language: str = "ko-KR"
+
+    # 관측성 (D — Langfuse, v1 선택. 미설정 시 no-op)
+    langfuse_public_key: str = ""
+    langfuse_secret_key: SecretStr = SecretStr("")
+    langfuse_host: str = ""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """프로세스 단위 싱글톤 설정."""
+    return Settings()

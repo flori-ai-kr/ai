@@ -1,0 +1,81 @@
+# ==============================================================================
+# flori ai (FastAPI/LangGraph) CI/CD — PROD
+# ==============================================================================
+# 흐름: ARM64 네이티브 Docker 빌드 → ECR(flori-prod/ai) → SSH deploy.ai.sh
+# 트리거: main push (dev 워크플로는 dev 브랜치 전용으로 분리됨).
+# 테스트/린트는 ci.yml 이 전담(같은 push). deploy 는 빌드/배포만.
+# ai-server 는 prod-app 호스트 컨테이너로 배포됨(별도 ai 서버 없음) → SSH_HOST = flori-prod-app EIP.
+#
+# GitHub Environment `prod` secrets:
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  (flori-prod/* push 권한)
+#   SSH_HOST (= flori-prod-app EIP) / SSH_USER (ec2-user) / SSH_PRIVATE_KEY (flori-key.pem)
+# ==============================================================================
+
+name: 🚀 Deploy ai (PROD)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: flori-prod/ai
+
+jobs:
+  build-and-push:
+    name: 빌드 및 ECR Push
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+      - name: AWS 인증 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: ECR 로그인
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 이미지 태그 생성
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
+          echo "tags=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+      - name: Docker Buildx 설정
+        uses: docker/setup-buildx-action@v3
+      - name: Docker 이미지 빌드 및 Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          platforms: linux/arm64
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: EC2 배포
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: SSH 배포
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            /home/ec2-user/scripts/deploy.ai.sh ${{ needs.build-and-push.outputs.image_tag }}

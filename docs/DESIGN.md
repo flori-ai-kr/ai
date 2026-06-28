@@ -2,6 +2,8 @@
 
 > Flori 꽃집 SaaS 프리미엄 AI 서비스 설계. 2026-05-25 작성. **사용자 승인 게이트** — 본 문서 승인 후 구현(SPEC-AI-001) 착수.
 > 백엔드 REST 표면은 `~/Desktop/hazel-server`(Spring/Kotlin) 기준. 구조 참고(복붙 금지): `~/Desktop/kikoai/ai`.
+>
+> 📐 **as-built 상세**: [ARCHITECTURE.md](ARCHITECTURE.md)(전체 통합) · [features/](features/README.md)(A·B·C·D 기능별 플로우/스택). 본 문서는 "왜 이렇게 설계했나(결정·근거)"의 SSOT.
 
 ## 1. 배경 & 미션
 
@@ -48,6 +50,69 @@ flowchart LR
 ## 3. 기술 스택
 
 Python 3.12+ / uv / FastAPI + uvicorn / LangGraph(StateGraph·ReAct) / LiteLLM proxy → Bedrock Claude Haiku 4.5 / `langchain-openai`(OpenAI 호환) / Pydantic v2 / httpx(async) / Redis / Langfuse(v1 선택) / pytest · ruff.
+
+### 3.1 기술 선정 근거 (탈락 후보)
+
+이 서비스의 도메인 맥락 = "백엔드 DB 비접근, JWT 패스스루, human-in-loop 쓰기, 1인 꽃집 비용 민감". 아래는 핵심 선택의 근거와 탈락 후보다.
+
+#### 에이전트 오케스트레이션 — 직접 구현 ReAct 루프
+
+LangGraph는 골격으로 두되, A/B/C/D 실 경로는 `langchain-openai` `bind_tools` + `langchain_core` 메시지로 직접 구현한 ReAct 루프를 쓴다. iteration cap·토큰 버짓·감사 훅을 우리가 완전히 통제해야 하고, 쓰기 게이팅(is_write 차단)을 루프 내부에 강제해야 하기 때문이다.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| LangGraph StateGraph 전면 채택 | 단순 도구콜 루프에 그래프 빌드 오버헤드·디버깅 비용 과함. 골격만 유지 |
+| LangChain AgentExecutor | 내부 동작 불투명 — iteration cap·감사·쓰기 차단을 끼워넣기 어려움 |
+| OpenAI Assistants API | 벤더 락인. LiteLLM→Bedrock 경유 정책과 충돌, 상태를 외부에 위임 |
+
+#### LLM 게이트웨이 — LiteLLM 프록시 → Bedrock Claude Haiku 4.5
+
+모든 LLM·Vision 호출을 단일 프록시·단일 모델로 통일. OpenAI 호환 인터페이스라 클라이언트 교체 비용이 낮고, 모델 라우팅·키 관리·비용 통제를 프록시 한 곳에서 한다. B의 OCR도 동일 멀티모달 모델.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| Bedrock SDK 직접 호출 | 모델 교체·키 관리가 코드에 박힘. OpenAI 호환 생태계(langchain-openai) 활용 불가 |
+| OpenAI/GPT 직접 | 사내 표준이 Bedrock. 비용·데이터 거버넌스(리전) 통제 어려움 |
+| 비전 전용 별도 모델 | 텍스트/비전 모델 이원화 → 프롬프트·비용·운영 복잡. Haiku 4.5 멀티모달로 단일화 |
+
+#### 인증 — JWT 패스스루 + `/me` 인트로스펙션
+
+AI 서버는 JWT를 서명검증·발급하지 않고, 받은 토큰을 백엔드에 그대로 전달한다. 멀티테넌시·구독 게이팅의 단일 진실원은 Spring이다 (§5.1 참조).
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| AI 서버가 JWT 서명검증 | 서명키를 AI에 두면 god-mode가 됨. 키 동기화·회전 부담, 보안 표면 확대 |
+| god-mode DB 커넥션 | 멀티테넌시 격리를 AI가 직접 책임져야 함 — 아키텍처 1순위 원칙 위반 |
+| 별도 IdP(Keycloak 등) | 1인 SaaS 규모에 과함. 백엔드 JWT 재활용이 단순 |
+
+#### 세션·상태 저장 — Redis
+
+대화 세션(session_id+턴), 사용량 캡 카운터, pending 쓰기 제안을 휘발성·TTL로 저장. AI는 영속 데이터를 소유하지 않는다.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| 인메모리(프로세스) | 다중 인스턴스·재시작에 세션 유실. C2 WebSocket sticky 세션 불가 |
+| AI 서버 자체 DB(Postgres) | 영속 데이터는 백엔드가 SSOT — AI가 DB를 갖는 순간 책임 경계가 흐려짐 |
+| 백엔드 DB 직접 | DB 비접근 원칙 위반 |
+
+#### 쓰기 실행 — human-in-loop 확인 카드
+
+쓰기(예약 생성 등)는 LLM이 직접 못 하고, `PendingWrite` 제안 → `ConfirmationCard` → `/confirm` 경유로만 실행 (§5.4 참조).
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| LLM 직접 쓰기 | 환각·프롬프트 인젝션이 곧 데이터 오염. 되돌리기 어려운 행위는 사람 확인 필수 |
+| 신뢰 기반 전면 자동화 | v1에서 위험. 신뢰 쌓인 뒤 저위험 쓰기부터 점진 완화 |
+
+#### STT / TTS — AWS Transcribe / Polly
+
+한국어 품질·AWS 생태계 일관성·Port 추상화로 교체 가능성 확보. Polly `Seoyeon`(neural), Transcribe `ko-KR` 스트리밍.
+
+| 탈락 후보 | 이유 |
+|-----------|------|
+| Naver Clova | 별도 벤더·키 관리. AWS(Bedrock)와 자격·리전 통합 이점 포기 |
+| OpenAI Whisper/TTS | 음성까지 OpenAI 의존 추가. Bedrock 표준과 어긋남 |
+| Google STT | AWS 외 벤더 추가. Port 추상화로 추후 교체는 가능하게만 |
 
 ## 4. 모듈 / 디렉토리 구조
 
@@ -194,23 +259,25 @@ general_settings:
 - 진입: `POST /chat` 텍스트 턴. ReAct 루프가 6.1 읽기 도구를 호출 → LLM이 수치를 근거로 해설("객단가 ↓, 카드결제 비중 ↑" 등).
 - 가장 저렴·저위험 → **도구콜 루프를 끝까지 검증**하는 기준점. 쓰기 없음.
 
-### 9.2 B — OCR→예약 (SPEC-AI-003)
-- 진입: `POST /chat` 이미지 턴(카톡 스크린샷). 비전 LLM이 `{customerName, phone?, date, time?, items[], amount?}` 구조화 추출.
-- 날짜·시간 파싱(상대표현 "내일 2시" → KST 절대시각), 누락 필드 질의(clarify).
-- `propose_reservation` → 확인 카드 → 확인 시 `find_or_create_customer` + `POST /reservations`.
+### 9.2 B — OCR→예약 (SPEC-AI-003) ✅ 구현
+- `POST /ocr/reservation {image_url}` → 비전 LLM(Haiku 4.5)이 `ReservationDraft{customer_name, customer_phone?, date, time?, title, amount?}` 추출(`app/agents/vision.py`).
+- 추출 결과는 **제안일 뿐** — `PendingWrite`(Redis, proposal_id·user_id 바인딩·TTL·1회성)로 저장하고 `ConfirmationCard`를 반환.
+- `POST /confirm {proposal_id}` → 소유자 검증 → `app/confirm/executor.py`가 `POST /reservations`(JWT 패스스루) 실행. 미존재/만료 404, 타 유저 403, 실행 후 삭제.
+- **쓰기 게이팅**: 에이전트 ReAct 루프는 is_write 도구를 차단(직접 실행 불가). 쓰기는 confirm 경유만.
 
-### 9.3 C — 음성 (SPEC-AI-004 C1 → SPEC-AI-005 C2)
-- C1 푸시투토크: 앱이 녹음 → 업로드 → STT → 텍스트 턴으로 그래프 진입 → 응답 텍스트 → TTS → 음성 반환(HTTP/SSE).
-- C2 실시간: 전송계층을 WS/WebRTC로 교체. 부분 인식·바지인 고려. 세션·턴 추상화 재사용.
-- STT/TTS 프로바이더는 Port로 추상화 — AWS Transcribe/Polly vs Naver Clova vs OpenAI를 한국어·꽃 도메인 기준으로 C 단계에서 확정.
+### 9.3 C — 음성 (SPEC-AI-004 C1 ✅ → SPEC-AI-005 C2)
+- C1 푸시투토크 ✅: `POST /voice/turn`(audio base64) → STT → `run_agent`(A 재사용) → TTS → 음성(base64) 반환. 세션 턴 기록(kind=audio). `app/voice/pipeline.py`.
+- **STT/TTS = AWS Transcribe/Polly**(확정). Port 추상화(`app/voice/ports.py`) — `SttProvider`/`TtsProvider`. 어댑터 `app/voice/aws.py`(`TranscribeStt` 스트리밍, `PollyTts` boto3, voice=Seoyeon, ko-KR). 실 AWS 호출은 인프라에서 검증.
+- C2 실시간 ✅: `WS /voice/stream`(WebSocket 전송, `app/api/voice_ws.py`) — **전송계층만 교체**하고 `run_voice_turn` 재사용. 멀티턴·session_id sticky, 쿼리 토큰 인증, 오디오 누적 상한, event 프로토콜(transcript/reply/audio/error/done). WebRTC(TURN/시그널링) + 서브-발화 실시간 partial/바지인(Transcribe 스트리밍 실시간 공급)은 인프라 필요 → 후속.
 
-### 9.4 D — 에이전트 확장 (SPEC-AI-006)
-- A·B·C 도구를 묶은 다단계 에이전트 + 선제 제안(예: "내일 예약 3건 — 리마인더 보낼까요?"). 선제 제안도 쓰기는 확인 게이팅.
-- 복잡도 상승 시 Langfuse 트레이싱 도입.
+### 9.4 D — 에이전트 확장 (SPEC-AI-006) ✅ 구현
+- **선제 제안** `GET /agent/proactive`: 읽기 도구(`/dashboard/today`·`/reservations/upcoming`)로 컨텍스트 수집 → LLM이 `Suggestion{title, detail}` 목록 생성(`app/agents/proactive.py`). 읽기전용·fail-open. 컨텍스트는 데이터로 펜스 격리.
+- **관측성** `app/observability/tracing.py`: `@observe` seam — Langfuse env 설정 시 트레이싱, 미설정 시 no-op 패스스루(fail-open). `run_agent`·proactive에 적용.
+- 선제 제안도 쓰기는 자동 실행하지 않음 — 실행은 B의 confirm(human-in-loop) 경유.
 
 ## 10. 시퀀싱 (ROADMAP 연계)
 
-`SPEC-AI-001`(Foundation) → `002`(A) → `003`(B) → `004`(C1) → `005`(C2) → `006`(D). 상세·인수기준은 `ROADMAP.md` + 각 `.moai/specs/<ID>/spec.md`.
+`SPEC-AI-001`(Foundation) → `002`(A) → `003`(B) → `004`(C1) → `005`(C2) → `006`(D). 상세·인수기준은 `ROADMAP.md` + 각 `docs/specs/<ID>.md`.
 
 ## 11. 테스트 / 품질
 
@@ -231,7 +298,7 @@ general_settings:
 
 1. **`/me` 인트로스펙션 캐시 TTL** — 60초 제안. 더 짧게/길게?
 2. **사용량 캡 정책** — 무엇을 기준(턴 수/토큰/비용)으로, 윈도우(일/월)는? 구독 등급별 한도는 백엔드에서 받아올지(`GET /subscription`) AI가 자체 테이블로 둘지.
-3. **확인 카드 스키마** — 앱(`flori-ai/mobile`)과 공유할 `ConfirmationCard` JSON 계약. 앱 팀과 합의 필요. 초안: `{proposal_id, action, summary, fields[], expires_at}`.
+3. **확인 카드 스키마** — ✅ 확정(SPEC-AI-003). `ConfirmationCard{proposal_id, action, summary, fields:[{label,value}], expires_at(ISO UTC)}`. 앱(`flori-ai/mobile`)은 이 계약으로 카드를 렌더하고 `POST /confirm {proposal_id}`로 확정. (필드 편집 후 수정 payload 전송은 후속 확장)
 4. **세션 식별** — `session_id`를 앱이 생성/전달할지, AI가 발급할지. 디바이스/유저 단위?
 5. **감사 로그 durable 저장** — v1 Redis+stdout로 시작 후, 백엔드에 `POST /internal/ai-audit` 추가할지.
 6. **STT/TTS 프로바이더** — C 단계에서 확정(보류).

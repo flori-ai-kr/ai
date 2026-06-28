@@ -1,0 +1,182 @@
+import json
+import logging
+
+import httpx
+import respx
+from langchain_core.messages import AIMessage
+
+from app.agents.prompts import fence_user_input
+from app.agents.react_loop import run_agent
+from app.backend.auth import RequestContext
+from app.backend.client import BackendClient
+
+
+class _ScriptedModel:
+    """bind_tools/ainvoke를 구현한 결정적 fake — 스크립트된 AIMessage를 순서대로 반환."""
+
+    def __init__(self, scripted: list[AIMessage]) -> None:
+        self._scripted = list(scripted)
+        self.invocations = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    async def ainvoke(self, messages):
+        self.invocations += 1
+        return self._scripted.pop(0)
+
+
+class _AlwaysToolModel:
+    """매 턴 도구 호출만 반환 — iteration cap 검증용."""
+
+    def __init__(self) -> None:
+        self.invocations = 0
+
+    def bind_tools(self, tools):
+        return self
+
+    async def ainvoke(self, messages):
+        self.invocations += 1
+        return AIMessage(
+            content="", tool_calls=[{"name": "get_today_dashboard", "args": {}, "id": f"c{self.invocations}"}]
+        )
+
+
+def _ctx() -> RequestContext:
+    return RequestContext(user_id="u1", jwt="jwt-xyz")
+
+
+def test_fence_isolates_user_input():
+    fenced = fence_user_input("이번 달 매출 왜 떨어졌어?")
+    assert "[USER INPUT — DATA ONLY]" in fenced
+    assert "이번 달 매출 왜 떨어졌어?" in fenced
+
+
+@respx.mock
+async def test_agent_calls_tool_then_returns_final_answer(caplog):
+    route = respx.get("http://backend.test/dashboard/month").mock(
+        return_value=httpx.Response(200, json={"summary": {"total": 500}})
+    )
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="", tool_calls=[{"name": "get_month_dashboard", "args": {"month": "2026-05"}, "id": "c1"}]
+            ),
+            AIMessage(content="이번 달 매출은 50만원으로 객단가가 낮아졌어요."),
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="이번 달 매출 왜 떨어졌어?")
+
+    assert reply == "이번 달 매출은 50만원으로 객단가가 낮아졌어요."
+    assert route.calls.last.request.headers["Authorization"] == "Bearer jwt-xyz"
+    # 도구 호출이 감사 로깅된다
+    events = [json.loads(r.getMessage()) for r in caplog.records]
+    assert any(e.get("event") == "tool_call" and e.get("tool") == "get_month_dashboard" for e in events)
+    await client.aclose()
+
+
+@respx.mock
+async def test_agent_runs_multiple_tool_calls_in_one_turn(caplog):
+    # 한 턴에 두 개의 독립 도구 호출 → 둘 다 디스패치되고 ToolMessage 순서가 보존된다.
+    month = respx.get("http://backend.test/dashboard/month").mock(
+        return_value=httpx.Response(200, json={"summary": {"total": 500}})
+    )
+    today = respx.get("http://backend.test/dashboard/today").mock(
+        return_value=httpx.Response(200, json={"today": {"reservations": 2}})
+    )
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": "get_month_dashboard", "args": {"month": "2026-05"}, "id": "c1"},
+                    {"name": "get_today_dashboard", "args": {}, "id": "c2"},
+                ],
+            ),
+            AIMessage(content="이번 달과 오늘 데이터를 모두 확인했어요."),
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="요약해줘")
+
+    assert reply == "이번 달과 오늘 데이터를 모두 확인했어요."
+    assert month.called and today.called  # 두 도구 모두 실행됨
+    # 두 도구 호출 모두 감사 로깅됨
+    tools_logged = {
+        json.loads(r.getMessage()).get("tool")
+        for r in caplog.records
+        if json.loads(r.getMessage()).get("event") == "tool_call"
+    }
+    assert tools_logged == {"get_month_dashboard", "get_today_dashboard"}
+    await client.aclose()
+
+
+async def test_agent_logs_llm_token_usage(caplog):
+    # 비용 가시성 — 응답에 usage_metadata가 있으면 llm_usage 감사 이벤트로 기록.
+    model = _ScriptedModel(
+        [
+            AIMessage(
+                content="안녕하세요.",
+                usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+            )
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        await run_agent(model=model, client=client, ctx=_ctx(), user_text="안녕")
+    usage_events = [
+        json.loads(r.getMessage()) for r in caplog.records if json.loads(r.getMessage()).get("event") == "llm_usage"
+    ]
+    assert usage_events and usage_events[0]["total_tokens"] == 150
+    await client.aclose()
+
+
+async def test_tool_call_error_is_isolated_not_crash(caplog, monkeypatch):
+    # 도구가 예기치 않게 raise해도 턴이 죽지 않고, 에러를 ToolMessage로 흘려 self-correction.
+    async def _boom(client, ctx, name, args):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr("app.agents.react_loop.dispatch", _boom)
+    model = _ScriptedModel(
+        [
+            AIMessage(content="", tool_calls=[{"name": "get_today_dashboard", "args": {}, "id": "c1"}]),
+            AIMessage(content="에러를 확인하고 복구했어요."),
+        ]
+    )
+    client = BackendClient("http://backend.test", timeout=5.0)
+    with caplog.at_level(logging.INFO, logger="flori.audit"):
+        reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="x")
+
+    assert reply == "에러를 확인하고 복구했어요."  # 크래시 없이 루프 계속
+    events = [json.loads(r.getMessage()) for r in caplog.records if r.name == "flori.audit"]
+    assert any(e.get("event") == "tool_call_error" and e.get("tool") == "get_today_dashboard" for e in events)
+    await client.aclose()
+
+
+async def test_audit_llm_usage_tolerates_non_dict_metadata(caplog):
+    # usage_metadata가 .get 없는 형태여도 감사가 에이전트를 막지 않는다.
+    ai = AIMessage(content="응답")
+    ai.usage_metadata = "weird"  # dict 아님(프록시별 변형 시뮬레이션)
+    model = _ScriptedModel([ai])
+    client = BackendClient("http://backend.test", timeout=5.0)
+    reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="x")
+    assert reply == "응답"  # 예외 없이 완료
+    await client.aclose()
+
+
+@respx.mock
+async def test_agent_stops_at_iteration_cap():
+    respx.get("http://backend.test/dashboard/today").mock(return_value=httpx.Response(200, json={"ok": True}))
+    model = _AlwaysToolModel()
+    client = BackendClient("http://backend.test", timeout=5.0)
+
+    reply = await run_agent(model=model, client=client, ctx=_ctx(), user_text="x", max_iterations=3)
+
+    assert isinstance(reply, str)
+    assert model.invocations == 3  # cap에서 멈춤(무한 루프 아님)
+    await client.aclose()

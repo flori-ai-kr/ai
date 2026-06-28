@@ -1,0 +1,95 @@
+# ==============================================================================
+# flori ai (FastAPI/LangGraph) CI/CD — DEV
+# ==============================================================================
+# 배치: flori-ai-kr/ai 리포 .github/workflows/deploy-ai-dev.yml (별도 레포, 코드 루트)
+# 흐름: ruff/pytest → ARM64 네이티브 빌드 → ECR(flori-dev/ai) → SSH deploy.ai.sh
+# 패턴: aws-infra/.github/workflows/api/deploy-optigen-dev.yml 과 동일 (ubuntu-24.04-arm, QEMU 불필요)
+#
+# GitHub Secrets (org 또는 repo dev Environment):
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  (flori-gha-ecr)
+#   SSH_HOST (= flori-dev-ai EIP 13.209.175.202) / SSH_USER (ec2-user) / SSH_PRIVATE_KEY (flori-key.pem)
+# ==============================================================================
+
+name: 🚀 Deploy ai (DEV)
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: flori-dev/ai
+
+jobs:
+  build-and-push:
+    name: 빌드 및 ECR Push
+    runs-on: ubuntu-24.04-arm # ARM64 네이티브 (QEMU 불필요, public 레포 무료 러너)
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+      - name: uv 설치
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.7.x"
+          enable-cache: true
+      - name: Python 셋업
+        run: uv python install 3.12
+      - name: 의존성 설치
+        run: uv sync --frozen
+      - name: ruff 린트 + 포맷 체크
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: pytest
+        run: uv run pytest -q
+      - name: AWS 인증 설정
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: ECR 로그인
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: 이미지 태그 생성
+        id: meta
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(TZ='Asia/Seoul' date +'%Y%m%d%H%M%S')
+          echo "tags=${TIMESTAMP}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+      - name: Docker Buildx 설정
+        uses: docker/setup-buildx-action@v3
+      - name: Docker 이미지 빌드 및 Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.meta.outputs.tags }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+          platforms: linux/arm64
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: EC2 배포
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: SSH 배포
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            /home/ec2-user/scripts/deploy.ai.sh ${{ needs.build-and-push.outputs.image_tag }}
